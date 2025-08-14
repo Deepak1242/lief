@@ -1,7 +1,7 @@
 import { GraphQLDateTime } from 'graphql-scalars'
 import prisma from '@/lib/prisma'
 import { haversineKm } from '@/lib/geo'
-import { getSession } from '@auth0/nextjs-auth0/edge'
+import { getSession } from '@auth0/nextjs-auth0'
 
 async function getActiveLocation() {
   return prisma.location.findFirst({ where: { active: true } })
@@ -13,10 +13,10 @@ function withinPerimeter(lat, lng, location) {
   return d <= location.radiusKm
 }
 
-async function getCurrentUser(req) {
+async function getCurrentUser(req, res) {
   // Prefer Auth0 session (edge SDK for App Router). Fallback to testing headers if absent.
   try {
-    const session = await getSession(req)
+    const session = await getSession(req, res)
     if (session?.user) {
       const { sub, email, name } = session.user
       if (!sub) return null
@@ -54,9 +54,9 @@ export const resolvers = {
   DateTime: GraphQLDateTime,
 
   Query: {
-    me: async (_p, _a, { req }) => getCurrentUser(req),
+    me: async (_p, _a, { req, res }) => getCurrentUser(req, res),
     users: async (_p, { search }, { req }) => {
-      const me = await getCurrentUser(req)
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       if (!search) return prisma.user.findMany({ orderBy: { createdAt: 'desc' } })
       return prisma.user.findMany({
@@ -69,14 +69,14 @@ export const resolvers = {
         orderBy: { createdAt: 'desc' },
       })
     },
-    user: async (_p, { id }, { req }) => {
-      const me = await getCurrentUser(req)
+    user: async (_p, { id }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       if (!me) throw new Error('Unauthenticated')
       if (me.role !== 'ADMIN' && me.id !== id) throw new Error('Forbidden')
       return prisma.user.findUnique({ where: { id } })
     },
-    shifts: async (_p, { userId, from, to }, { req }) => {
-      const me = await getCurrentUser(req)
+    shifts: async (_p, { userId, from, to }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       if (!me) throw new Error('Unauthenticated')
       const targetUserId = userId || me.id
       if (me.role !== 'ADMIN' && targetUserId !== me.id) throw new Error('Forbidden')
@@ -96,8 +96,8 @@ export const resolvers = {
       })
     },
     locations: (_p, { active }) => prisma.location.findMany({ where: active == null ? {} : { active } }),
-    analytics: async (_p, { userId, from, to }, { req }) => {
-      const me = await getCurrentUser(req)
+    analytics: async (_p, { userId, from, to }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       if (!me) throw new Error('Unauthenticated')
       const targetUserId = userId || me.id
       if (me.role !== 'ADMIN' && targetUserId !== me.id) throw new Error('Forbidden')
@@ -106,8 +106,8 @@ export const resolvers = {
         orderBy: { date: 'desc' },
       })
     },
-    dashboardStats: async (_p, _a, { req }) => {
-      const me = await getCurrentUser(req)
+    dashboardStats: async (_p, _a, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       // Avg hours/day for all staff (from Analytics)
       const analytics = await prisma.analytics.groupBy({ by: ['date'], _avg: { totalHours: true } })
@@ -136,47 +136,47 @@ export const resolvers = {
 
       return { avgHoursPerDayAll, dailyClockInCounts, weeklyHoursPerStaff }
     },
-    currentlyClockedIn: async (_p, _a, { req }) => {
-      const me = await getCurrentUser(req)
+    currentlyClockedIn: async (_p, _a, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       return prisma.shift.findMany({ where: { clockOutAt: null }, orderBy: { clockInAt: 'desc' } })
     },
   },
 
   Mutation: {
-    createUser: async (_p, { auth0Id, email, name, role }, { req }) => {
-      const me = await getCurrentUser(req)
+    createUser: async (_p, { auth0Id, email, name, role }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       return prisma.user.create({ data: { auth0Id, email, name, role } })
     },
-    deleteUser: async (_p, { id }, { req }) => {
-      const me = await getCurrentUser(req)
+    deleteUser: async (_p, { id }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       await prisma.user.delete({ where: { id } })
       return true
     },
-    upsertLocation: async (_p, { id, name, latitude, longitude, radiusKm, active }, { req }) => {
-      const me = await getCurrentUser(req)
+    upsertLocation: async (_p, { id, name, latitude, longitude, radiusKm, active }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       if (id) {
         return prisma.location.update({ where: { id }, data: { name, latitude, longitude, radiusKm, active } })
       }
       return prisma.location.create({ data: { name, latitude, longitude, radiusKm, active } })
     },
-    setActiveLocation: async (_p, { id }, { req }) => {
-      const me = await getCurrentUser(req)
+    setActiveLocation: async (_p, { id }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       await prisma.location.updateMany({ data: { active: false }, where: {} })
       return prisma.location.update({ where: { id }, data: { active: true } })
     },
-    promoteUser: async (_p, { id, role }, { req }) => {
-      const me = await getCurrentUser(req)
+    promoteUser: async (_p, { id, role }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       return prisma.user.update({ where: { id }, data: { role } })
     },
 
-    clockIn: async (_p, { note, lat, lng, manualOverride }, { req }) => {
-      const user = await getCurrentUser(req)
+    clockIn: async (_p, { note, lat, lng, manualOverride }, { req, res }) => {
+      const user = await getCurrentUser(req, res)
       if (!user) throw new Error('Unauthenticated')
       const activeLoc = await getActiveLocation()
       const allowed = manualOverride ? true : withinPerimeter(lat, lng, activeLoc)
@@ -196,8 +196,8 @@ export const resolvers = {
       })
     },
 
-    clockOut: async (_p, { note, lat, lng, manualOverride }, { req }) => {
-      const user = await getCurrentUser(req)
+    clockOut: async (_p, { note, lat, lng, manualOverride }, { req, res }) => {
+      const user = await getCurrentUser(req, res)
       if (!user) throw new Error('Unauthenticated')
       const activeLoc = await getActiveLocation()
       const allowed = manualOverride ? true : withinPerimeter(lat, lng, activeLoc)
@@ -217,15 +217,15 @@ export const resolvers = {
       })
     },
 
-    adminClockOut: async (_p, { userId }, { req }) => {
-      const me = await getCurrentUser(req)
+    adminClockOut: async (_p, { userId }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       const open = await prisma.shift.findFirst({ where: { userId, clockOutAt: null }, orderBy: { clockInAt: 'desc' } })
       if (!open) throw new Error('No active shift to close')
       return prisma.shift.update({ where: { id: open.id }, data: { clockOutAt: new Date() } })
     },
-    adminRebuildAnalytics: async (_p, { userId, from, to }, { req }) => {
-      const me = await getCurrentUser(req)
+    adminRebuildAnalytics: async (_p, { userId, from, to }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
       requireAdmin(me)
       const whereShift = {
         ...(userId ? { userId } : {}),

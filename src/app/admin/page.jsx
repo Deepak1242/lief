@@ -1,20 +1,33 @@
 "use client";
 import AdminDashboard from "@/components/AdminDashboard";
 import { useUser } from "@auth0/nextjs-auth0/client";
-import { Spin, Typography, Alert } from "antd";
+import { Spin, Alert } from "antd";
 
 export default function AdminPage() {
   const { user, isLoading } = useUser();
-  if (isLoading) return <Spin />;
-  // On server, RBAC enforced by GraphQL; here we just hint.
-  return (
-    <div className="p-4">
-      <div className="mb-4 flex items-center gap-3">
-        <a href="/api/auth/login" className="underline">Login</a>
-        <a href="/api/auth/logout" className="underline">Logout</a>
-        <a href="/" className="underline">Home</a>
+  
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Spin size="large" />
       </div>
-      {user ? <AdminDashboard /> : <Alert type="warning" message="Please login as Admin to continue" showIcon />}
-    </div>
-  );
+    );
+  }
+
+  // On server, RBAC enforced by GraphQL; here we just show a message
+  if (!user) {
+    return (
+      <div className="flex h-screen items-center justify-center">
+        <Alert 
+          type="warning" 
+          message="Access Denied" 
+          description="Please log in with an admin account to access this page."
+          showIcon 
+          className="max-w-md"
+        />
+      </div>
+    );
+  }
+
+  return <AdminDashboard />;
 }
