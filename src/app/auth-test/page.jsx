@@ -1,5 +1,8 @@
 'use client';
 
+// Disable static generation for this page to avoid build errors
+export const dynamic = 'force-dynamic';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffect, useState } from 'react';
 import { Card, Descriptions, Spin, Alert, Button, Typography } from 'antd';
