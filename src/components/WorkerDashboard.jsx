@@ -1,7 +1,10 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, isValidElement, cloneElement } from "react";
 import { useMutation, useQuery } from "@apollo/client";
-import { ANALYTICS_ME, CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
+import { CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
+import { useOfflineClockIn } from '../hooks/useOfflineClockIn';
+import { useBackgroundSync } from '../hooks/useBackgroundSync';
+import BackgroundSettings from './BackgroundSettings';
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -36,7 +39,7 @@ const LocationRequiredDialog = ({ onRetry }) => (
             onClick={onRetry}
             className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
           >
-            I've Enabled Location
+            I&apos;ve Enabled Location
           </button>
           <a
             href="https://support.google.com/chrome/answer/142065"
@@ -185,7 +188,7 @@ const LocationStatusCard = ({ inside }) => (
 
 // Stats grid wrapper
 const StatsGrid = ({ children }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">{children}</div>
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">{children}</div>
 );
 
 // Enhanced Time Clock section
@@ -197,20 +200,37 @@ const presetNotes = [
   'At client location'
 ];
 
-const TimeClockCard = ({
-  loading,
-  openShift,
-  pos,
+const ClockInOutCard = ({ 
+  openShift, 
+  pos, 
   geoLoading,
   manualNote,
   setManualNote,
   handleClockIn,
   handleClockOut,
   clockingIn,
-  clockingOut
+  clockingOut,
+  isOffline,
+  pendingSyncCount
 }) => (
   <StyledCard title="Time Clock" className="mb-10" loading={loading} gradient>
     <div className="space-y-4">
+      {/* Offline status indicator */}
+      {isOffline && (
+        <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center gap-2 text-orange-700">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span className="font-medium">Working Offline</span>
+          </div>
+          {pendingSyncCount > 0 && (
+            <p className="text-sm text-orange-600 mt-1">
+              {pendingSyncCount} clock entries pending sync
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex flex-col items-stretch gap-4">
         <div className="w-full">
           <input
@@ -308,9 +328,6 @@ const WorkLocationCard = ({ activeLoc }) => (
       <div className="flex items-center">
         <IconLocation className="w-5 h-5 mr-2 text-blue-500" />
         <span className="font-medium">{activeLoc.name}</span>
-      </div>
-      <div className="text-sm text-gray-600">
-        {activeLoc.address}
       </div>
       <div className="text-sm">
         <span className="text-gray-500">Radius: </span>
@@ -515,16 +532,18 @@ const formatDateTime = (dateString) => {
 
 export default function WorkerDashboard() {
   // User and location data
-  const { data: meData, loading: meLoading } = useQuery(ME);
+  const { data: meData, loading: meLoading } = useQuery(ME, {
+    fetchPolicy: "cache-first" // User data is relatively static
+  });
   const { data: locData, loading: locLoading } = useQuery(LIST_LOCATIONS, { 
     variables: { active: true }, 
-    fetchPolicy: "cache-and-network" 
+    fetchPolicy: "cache-first" // Locations are static data
   });
   
-  // Shift and analytics data with polling
+  // Shift and analytics data with optimized polling (60s instead of 15s)
   const { data: shiftsData, loading: shiftsLoading, refetch: refetchShifts } = useQuery(MY_SHIFTS, { 
-    fetchPolicy: "network-only", 
-    pollInterval: 15000 
+    fetchPolicy: "cache-and-network", 
+    pollInterval: 60000 
   });
   
   // Analytics range state and query
@@ -570,13 +589,7 @@ export default function WorkerDashboard() {
     return { start, end };
   }, []);
   const dateRange = useMemo(() => getDateRange(range, customStart), [range, customStart, getDateRange]);
-  const { data: analyticsData, loading: analyticsLoading, refetch: refetchAnalytics } = useQuery(
-    ANALYTICS_ME,
-    {
-      variables: { from: dateRange.start, to: dateRange.end },
-      fetchPolicy: 'cache-and-network',
-    }
-  );
+  // Analytics are computed from shifts for accuracy and immediate updates
 
   // Simple notify helper (replace antd message)
   const notify = useCallback((type, text) => {
@@ -584,37 +597,54 @@ export default function WorkerDashboard() {
     fn(text);
   }, []);
 
-  // Clock in/out mutations with loading states
-  const [clockIn, { loading: clockingIn }] = useMutation(CLOCK_IN, { 
-    onCompleted: () => { 
-      notify('success', 'Successfully clocked in');
-      refetchShifts(); 
-      refetchAnalytics(); 
-    },
-    onError: (err) => {
-      console.error("Clock in error:", err);
-      const errorMessage = err?.message || 'An unknown error occurred';
-      notify('error', `Failed to clock in: ${errorMessage}`);
-    }
-  });
-  
-  const [clockOut, { loading: clockingOut }] = useMutation(CLOCK_OUT, { 
-    onCompleted: () => { 
-      notify('success', 'Successfully clocked out');
-      refetchShifts(); 
-      refetchAnalytics(); 
-    },
-    onError: (err) => {
-      console.error("Clock out error:", err);
-      notify('error', `Failed to clock out: ${err.message}`);
-    }
-  });
+  // Use offline clock in/out hook
+  const {
+    clockIn: handleClockIn,
+    clockOut: handleClockOut,
+    clockingIn,
+    clockingOut,
+    isOffline,
+    pendingSyncCount,
+    localOpenShift,
+  } = useOfflineClockIn();
 
-  // Derived state
+  // Use background sync hook
+  const {
+    isBackgroundEnabled,
+    backgroundStatus,
+    syncEvents,
+    enableBackgroundTracking,
+    disableBackgroundTracking,
+    triggerSync,
+    showNotification
+  } = useBackgroundSync();
+
+  // Enable background tracking when component mounts
+  useEffect(() => {
+    if (meData?.me && activeLoc && backgroundStatus.isInitialized) {
+      enableBackgroundTracking({
+        workLocation: {
+          latitude: activeLoc.latitude,
+          longitude: activeLoc.longitude,
+          radiusKm: activeLoc.radiusKm
+        },
+        hasOpenShift: !!openShift,
+        lastLocationStatus: pos && activeLoc ? 
+          (haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude) <= activeLoc.radiusKm + 0.05 ? 'inside' : 'outside') : 
+          'unknown'
+      });
+    }
+  }, [meData?.me, activeLoc, backgroundStatus.isInitialized, enableBackgroundTracking, openShift, pos]);
+
+  // Derived state - use local shift when offline
   const activeLoc = useMemo(() => (locData?.locations?.[0]) || null, [locData]);
-  const openShift = useMemo(() => (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null, [shiftsData]);
+  const openShift = useMemo(() => {
+    // Use local shift state when offline or when we have pending offline data
+    if (localOpenShift) return localOpenShift;
+    return (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null;
+  }, [shiftsData, localOpenShift]);
   const recentShifts = useMemo(() => (shiftsData?.shifts || []).slice(0, 10), [shiftsData]);
-  const loading = meLoading || locLoading || shiftsLoading || analyticsLoading;
+  const loading = meLoading || locLoading || shiftsLoading;
   const [metric, setMetric] = useState('hours'); // 'hours' | 'entries'
 
   // Location tracking state
@@ -691,67 +721,62 @@ export default function WorkerDashboard() {
     if (pos && activeLoc) {
       const distance = haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude);
       setDistanceFromWork(distance);
-      
-      // Auto clock in/out based on location
-      const inside = distance <= activeLoc.radiusKm + 0.05; // Small buffer
+    }
+  }, [pos, activeLoc]);
+
+  useEffect(() => {
+    if (pos && activeLoc) {
+      const distance = haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude);
+      const inside = distance <= activeLoc.radiusKm + 0.05; // 50m buffer
       const prev = lastStatusRef.current;
       lastStatusRef.current = inside ? "inside" : "outside";
 
       if (inside !== (prev === "inside")) {
         if (inside && !openShift) {
-          clockIn({ 
-            variables: { 
-              note: `Auto clock-in (${formatDistance(distance)} from work)`, 
-              lat: pos.lat, 
-              lng: pos.lng 
-            } 
-          });
+          handleClockIn({ variables: { note: `Auto clock-in (${formatDistance(distance)} from work)`, lat: pos.lat, lng: pos.lng } });
         } else if (!inside && openShift) {
-          clockOut({ 
-            variables: { 
-              note: `Auto clock-out (${formatDistance(distance)} from work)`, 
-              lat: pos.lat, 
-              lng: pos.lng 
-            } 
-          });
+          handleClockOut({ variables: { note: `Auto clock-out (${formatDistance(distance)} from work)`, lat: pos.lat, lng: pos.lng } });
         }
       }
     }
-  }, [pos, activeLoc, openShift, clockIn, clockOut]);
+  }, [pos, activeLoc, openShift, handleClockIn, handleClockOut]);
 
-  // Helper to generate date range with zero-filled data
-  const getDateRangeWithData = (start, end, data) => {
-    // Create a map of dates to their data for quick lookup
+  // Calculate hours for a shift (exclude ongoing)
+  const calculateShiftHours = (shift) => {
+    if (!shift?.clockOutAt) return 0;
+    const startDt = new Date(shift.clockInAt);
+    const endDt = new Date(shift.clockOutAt);
+    return Math.max(0, (endDt - startDt) / 3600000); // hours
+  };
+
+  // Generate date range with data calculated from actual shifts
+  const getDateRangeWithShiftData = (start, end, shifts) => {
     const dateMap = new Map();
-    (data || []).forEach(item => {
-      // Normalize date to YYYY-MM-DD format for consistent comparison
-      const itemDate = new Date(item.date);
-      const dateKey = itemDate.toISOString().split('T')[0];
-      dateMap.set(dateKey, {
-        hours: item.totalHours || 0,
-        count: item.shiftCount || 0
-      });
+    (shifts || []).forEach(shift => {
+      if (!shift.clockOutAt) return; // Skip ongoing shifts
+      const shiftDate = new Date(shift.clockInAt);
+      const dateKey = shiftDate.toISOString().split('T')[0];
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { hours: 0, count: 0 });
+      }
+      const dayData = dateMap.get(dateKey);
+      dayData.hours += calculateShiftHours(shift);
+      dayData.count += 1;
     });
 
-    // Create array with all dates in range, zero-filled where no data exists
     const result = [];
     const current = new Date(start);
-    // Ensure we start at beginning of day
     current.setHours(0, 0, 0, 0);
     const endDate = new Date(end);
-    // Ensure we include the entire end day
     endDate.setHours(23, 59, 59, 999);
 
-    // Loop through each day in the range
     while (current <= endDate) {
       const dateKey = current.toISOString().split('T')[0];
-      const dayData = dateMap.get(dateKey) || { hours: 0, count: 0 };
-      // Create a new date object to avoid reference issues
+      const data = dateMap.get(dateKey) || { hours: 0, count: 0 };
       result.push({
         date: new Date(current),
-        ...dayData
+        ...data
       });
-      // Move to next day
       current.setDate(current.getDate() + 1);
     }
     return result;
@@ -759,16 +784,25 @@ export default function WorkerDashboard() {
 
   // Process analytics data with zero-fill and proper date handling
   const { processedAnalytics, daysWithData } = useMemo(() => {
-    if (!analyticsData?.analytics?.length) return { processedAnalytics: [], daysWithData: 0 };
-    
-    const data = getDateRangeWithData(dateRange.start, dateRange.end, analyticsData.analytics);
+    const shifts = shiftsData?.shifts || [];
+
+    const start = new Date(dateRange.start); start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end); end.setHours(23, 59, 59, 999);
+
+    const inRange = shifts.filter(s => {
+      const t = new Date(s.clockInAt).getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    });
+
+    // Always build zero-filled series so the chart renders even with no shifts
+    const data = getDateRangeWithShiftData(start, end, inRange);
     const daysWithDataCount = data.filter(d => d.hours > 0).length;
     
     return {
       processedAnalytics: data,
       daysWithData: daysWithDataCount > 0 ? daysWithDataCount : 1 // Avoid division by zero
     };
-  }, [analyticsData, dateRange]);
+  }, [shiftsData, dateRange]);
 
   // Calculate all metrics in a single useMemo for consistency
   const { todayHours, periodHours, periodEntries, avgHours } = useMemo(() => {
@@ -878,7 +912,8 @@ export default function WorkerDashboard() {
           color: theme.textSecondary,
           callback: function(value) {
             if (metric === 'hours') {
-              return value % 1 === 0 ? `${value}h` : '';
+              const num = Number(value) || 0;
+              return num > 0 ? `${num.toFixed(1)}h` : '0h';
             }
             return value;
           }
@@ -911,46 +946,6 @@ export default function WorkerDashboard() {
     return (now - start) / (1000 * 60 * 60); // in hours
   }, [openShift]);
 
-  // Handle clock in/out actions
-  const handleClockIn = useCallback(() => {
-    if (!pos) {
-      notify('info', 'Waiting for location...');
-      return;
-    }
-    if (openShift) {
-      notify('info', "You're already clocked in");
-      return;
-    }
-    clockIn({ 
-      variables: { 
-        note: manualNote || `Manual clock-in (${formatDistance(distanceFromWork)} from work)`, 
-        lat: pos.lat, 
-        lng: pos.lng, 
-        manualOverride: true 
-      } 
-    });
-    setManualNote("");
-  }, [pos, openShift, manualNote, clockIn, distanceFromWork, notify]);
-
-  const handleClockOut = useCallback(() => {
-    if (!pos) {
-      notify('info', 'Waiting for location...');
-      return;
-    }
-    if (!openShift) {
-      notify('info', 'No active shift to clock out from');
-      return;
-    }
-    clockOut({ 
-      variables: { 
-        note: manualNote || `Manual clock-out (${formatDistance(distanceFromWork)} from work)`, 
-        lat: pos.lat, 
-        lng: pos.lng, 
-        manualOverride: true 
-      } 
-    });
-    setManualNote("");
-  }, [pos, openShift, manualNote, clockOut, distanceFromWork, notify]);
 
   // Tailwind table renders shift history directly
 
@@ -1014,9 +1009,26 @@ export default function WorkerDashboard() {
                 color={openShift ? "blue" : "green"}
               />
             </div>
+            <div>
+              <StatCard
+                title="Total Hours (Range)"
+                value={formatDuration(periodHours * 60)}
+                icon={<IconClock />}
+                color="blue"
+              />
+            </div>
+            <div>
+              <StatCard
+                title="Total Shifts (Range)"
+                value={periodEntries}
+                suffix="shifts"
+                icon={<IconHistory />}
+                color="purple"
+              />
+            </div>
           </StatsGrid>
 
-          <TimeClockCard
+          <ClockInOutCard
             loading={loading}
             openShift={openShift}
             pos={pos}
@@ -1027,7 +1039,12 @@ export default function WorkerDashboard() {
             handleClockOut={handleClockOut}
             clockingIn={clockingIn}
             clockingOut={clockingOut}
+            isOffline={isOffline}
+            pendingSyncCount={pendingSyncCount}
           />
+
+          {/* Background Settings */}
+          <BackgroundSettings />
 
           {/* My Activity Chart */}
           <StyledCard 

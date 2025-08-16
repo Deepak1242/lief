@@ -23,7 +23,7 @@ export function AuthProvider({ children }) {
   // Fetch the user from the database
   const { data, loading: dbLoading, error: dbError, refetch } = useQuery(ME, {
     skip: !sessionUser, // Skip the query if there's no session user
-    fetchPolicy: 'network-only', // Don't use cache for this query
+    fetchPolicy: 'cache-first', // Use cache to reduce server requests
     onCompleted: (data) => {
       console.log('ME query completed:', data);
     },

@@ -84,6 +84,7 @@ export const typeDefs = gql`
     deleteUser(id: ID!): Boolean!
     upsertLocation(id: ID, name: String, latitude: Float!, longitude: Float!, radiusKm: Float!, active: Boolean!): Location!
     setActiveLocation(id: ID!): Location!
+    deleteLocation(id: ID!): Boolean!
     promoteUser(id: ID!, role: Role!): User!
     adminRebuildAnalytics(userId: ID, from: DateTime, to: DateTime): Boolean!
 

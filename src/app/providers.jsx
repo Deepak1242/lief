@@ -5,7 +5,13 @@ import { SessionProvider } from "next-auth/react";
 import { ConfigProvider, App as AntApp, theme } from "antd";
 import { AuthProvider } from "@/contexts/AuthContext";
 
-const httpLink = new HttpLink({ uri: "/api/graphql", credentials: "include" });
+const httpLink = new HttpLink({ 
+  uri: "/api/graphql", 
+  credentials: "include",
+  fetchOptions: {
+    method: 'POST',
+  }
+});
 
 // In development, allow impersonating a user via localStorage headers
 // window.localStorage keys: devEmail, devRole (e.g., ADMIN or CAREWORKER)
@@ -21,7 +27,28 @@ const devAuthLink = setContext((_, { headers }) => {
 
 const client = new ApolloClient({
   link: devAuthLink.concat(httpLink),
-  cache: new InMemoryCache(),
+  cache: new InMemoryCache({
+    typePolicies: {
+      Query: {
+        fields: {
+          shifts: {
+            merge: false,
+          },
+          locations: {
+            merge: false,
+          },
+        },
+      },
+    },
+  }),
+  defaultOptions: {
+    watchQuery: {
+      errorPolicy: 'ignore',
+    },
+    query: {
+      errorPolicy: 'all',
+    },
+  },
 });
 
 export default function Providers({ children }) {

@@ -72,17 +72,21 @@ export default function UserAnalyticsPage() {
     }
   }, [range, customStart]);
 
-  const { data: userData, loading: loadingUser } = useQuery(USER, { variables: { id: userId }, skip: !userId });
+  const { data: userData, loading: loadingUser } = useQuery(USER, { 
+    variables: { id: userId }, 
+    skip: !userId,
+    fetchPolicy: "cache-first" // User data is relatively static
+  });
   const { data: analyticsData, loading: loadingAnalytics, refetch: refetchAnalytics } = useQuery(ANALYTICS, {
     variables: { userId, from: dateRange.start, to: dateRange.end },
     skip: !userId,
-    fetchPolicy: "cache-and-network",
+    fetchPolicy: "cache-first", // Cache analytics data for better performance
     notifyOnNetworkStatusChange: true,
   });
   const { data: shiftsData, loading: loadingShifts, refetch: refetchShifts } = useQuery(SHIFTS_ADMIN, {
     variables: { userId, from: dateRange.start, to: dateRange.end },
     skip: !userId,
-    fetchPolicy: "cache-and-network",
+    fetchPolicy: "cache-first", // Cache shifts data for better performance
     notifyOnNetworkStatusChange: true,
   });
 
@@ -258,7 +262,7 @@ export default function UserAnalyticsPage() {
   }, [processedAnalytics, daysWithData]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

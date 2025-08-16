@@ -147,9 +147,36 @@ export const resolvers = {
     dashboardStats: async (_p, _a, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)
-      // Hours/day aggregates (from Analytics)
-      const analyticsByDate = await prisma.analytics.groupBy({ by: ['date'], _avg: { totalHours: true }, _sum: { totalHours: true } })
+      
+      // Optimize with parallel queries and date filtering to reduce load
+      const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000)
+      const monthAgo = new Date(Date.now() - 30 * 24 * 3600 * 1000)
+      
+      // Run queries in parallel for better performance
+      const [analyticsByDate, dailyShifts, weeklyAnalytics] = await Promise.all([
+        // Only get recent analytics data (last 30 days) instead of all data
+        prisma.analytics.groupBy({ 
+          by: ['date'], 
+          _avg: { totalHours: true }, 
+          _sum: { totalHours: true },
+          where: { date: { gte: monthAgo } }
+        }),
+        // Only get recent shifts (last 30 days) for daily counts
+        prisma.shift.groupBy({ 
+          by: ['clockInAt'], 
+          _count: { _all: true },
+          where: { clockInAt: { gte: monthAgo } }
+        }),
+        // Weekly hours per staff
+        prisma.analytics.groupBy({
+          by: ['userId'],
+          where: { date: { gte: weekAgo } },
+          _sum: { totalHours: true },
+        })
+      ])
+
       const avgHoursPerDayAll = analyticsByDate.reduce((s, a) => s + (a._avg.totalHours || 0), 0) / (analyticsByDate.length || 1)
+      
       // Build daily total hours array keyed by YYYY-MM-DD
       const hoursMap = {}
       analyticsByDate.forEach((row) => {
@@ -161,9 +188,8 @@ export const resolvers = {
         .map(([date, hours]) => ({ date, hours }))
 
       // Number of people clocking in daily
-      const dailyRaw = await prisma.shift.groupBy({ by: ['clockInAt'], _count: { _all: true } })
       const dailyMap = {}
-      dailyRaw.forEach((row) => {
+      dailyShifts.forEach((row) => {
         const d = new Date(row.clockInAt)
         const key = d.toISOString().slice(0, 10)
         dailyMap[key] = (dailyMap[key] || 0) + row._count._all
@@ -172,14 +198,7 @@ export const resolvers = {
         .sort(([a], [b]) => (a < b ? -1 : 1))
         .map(([date, count]) => ({ date, count }))
 
-      // Total hours per staff in last week
-      const weekAgo = new Date(Date.now() - 7 * 24 * 3600 * 1000)
-      const weekRows = await prisma.analytics.groupBy({
-        by: ['userId'],
-        where: { date: { gte: weekAgo } },
-        _sum: { totalHours: true },
-      })
-      const weeklyHoursPerStaff = weekRows.map((r) => ({ userId: r.userId, hours: r._sum.totalHours || 0 }))
+      const weeklyHoursPerStaff = weeklyAnalytics.map((r) => ({ userId: r.userId, hours: r._sum.totalHours || 0 }))
 
       return { avgHoursPerDayAll, dailyClockInCounts, weeklyHoursPerStaff, dailyTotalHours }
     },
@@ -234,6 +253,12 @@ export const resolvers = {
       requireAdmin(me)
       await prisma.location.updateMany({ data: { active: false }, where: {} })
       return prisma.location.update({ where: { id }, data: { active: true } })
+    },
+    deleteLocation: async (_p, { id }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
+      requireAdmin(me)
+      await prisma.location.delete({ where: { id } })
+      return true
     },
     promoteUser: async (_p, { id, role }, { req, res }) => {
       const me = await getCurrentUser(req, res)

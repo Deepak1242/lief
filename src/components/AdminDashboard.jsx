@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import { useQuery, useMutation } from "@apollo/client";
 import { 
   Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Table, 
@@ -96,21 +96,39 @@ export default function AdminDashboard() {
   const [timeRange, setTimeRange] = useState('weekly');
   const [customStartDate, setCustomStartDate] = useState(null);
   const [metric, setMetric] = useState('entries'); // 'entries' | 'hours'
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Data fetching
-  const { data: locData, loading: loadingLocations, refetch: refetchLocs } = useQuery(LIST_LOCATIONS);
+  const { data: locData, loading: loadingLocations, refetch: refetchLocs } = useQuery(LIST_LOCATIONS, {
+    fetchPolicy: 'cache-first' // Locations are relatively static
+  });
   const { data: clockedData, loading: loadingClockedIn, startPolling, stopPolling } = useQuery(CURRENTLY_CLOCKED_IN, { pollInterval: 0 });
   const { data: usersData, loading: loadingUsers, refetch: refetchUsers } = useQuery(USERS, { 
-    variables: { search: "" },
-    fetchPolicy: 'cache-and-network'
-  });
-  const { data: statsData, loading: loadingStats } = useQuery(DASHBOARD_STATS, {
+    variables: { search: searchTerm },
     fetchPolicy: 'cache-and-network'
   });
 
-  // Live update currently clocked in every 10s
+  // Debounced search function to prevent excessive API calls
+  const debouncedSearch = useCallback(
+    (() => {
+      let timeoutId;
+      return (value) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => {
+          setSearchTerm(value);
+        }, 500);
+      };
+    })(),
+    []
+  );
+  const { data: statsData, loading: loadingStats } = useQuery(DASHBOARD_STATS, {
+    fetchPolicy: 'cache-first',
+    pollInterval: 300000 // Refresh dashboard stats every 5 minutes instead of real-time
+  });
+
+  // Live update currently clocked in every 30s (optimized from 10s)
   useEffect(() => {
-    startPolling(10000);
+    startPolling(30000);
     return () => stopPolling();
   }, [startPolling, stopPolling]);
 
@@ -125,7 +143,8 @@ export default function AdminDashboard() {
     let start;
     
     if (range === 'custom' && customStart) {
-      start = new Date(customStart);
+      const cs = (customStart && typeof customStart.toDate === 'function') ? customStart.toDate() : customStart;
+      start = new Date(cs);
       // Set to beginning of the day
       start.setHours(0, 0, 0, 0);
     } else {
@@ -175,15 +194,40 @@ export default function AdminDashboard() {
       message.success("Location saved successfully"); 
       setEditLocId(null);
       form.resetFields();
-      refetchLocs(); 
     },
+    // Use Apollo's cache update instead of refetch for better performance
+    update: (cache, { data: { upsertLocation } }) => {
+      const existingLocations = cache.readQuery({ query: LIST_LOCATIONS });
+      if (existingLocations) {
+        const updatedLocations = existingLocations.locations.some(loc => loc.id === upsertLocation.id)
+          ? existingLocations.locations.map(loc => loc.id === upsertLocation.id ? upsertLocation : loc)
+          : [...existingLocations.locations, upsertLocation];
+        cache.writeQuery({
+          query: LIST_LOCATIONS,
+          data: { locations: updatedLocations }
+        });
+      }
+    }
   });
   
   const [setActiveLocation, { loading: settingActive }] = useMutation(SET_ACTIVE_LOCATION, {
     onCompleted: () => { 
       message.success("Active location updated"); 
-      refetchLocs(); 
     },
+    // Update cache instead of refetch
+    update: (cache, { data: { setActiveLocation } }) => {
+      const existingLocations = cache.readQuery({ query: LIST_LOCATIONS });
+      if (existingLocations) {
+        const updatedLocations = existingLocations.locations.map(loc => ({
+          ...loc,
+          active: loc.id === setActiveLocation.id
+        }));
+        cache.writeQuery({
+          query: LIST_LOCATIONS,
+          data: { locations: updatedLocations }
+        });
+      }
+    }
   });
 
   const [deleteLocation, { loading: deletingLoc }] = useMutation(DELETE_LOCATION, {
@@ -193,7 +237,17 @@ export default function AdminDashboard() {
         setEditLocId(null);
         form.resetFields();
       }
-      refetchLocs();
+    },
+    // Update cache instead of refetch
+    update: (cache, { data }, { variables }) => {
+      const existingLocations = cache.readQuery({ query: LIST_LOCATIONS });
+      if (existingLocations) {
+        const updatedLocations = existingLocations.locations.filter(loc => loc.id !== variables.id);
+        cache.writeQuery({
+          query: LIST_LOCATIONS,
+          data: { locations: updatedLocations }
+        });
+      }
     }
   });
   
@@ -252,18 +306,15 @@ export default function AdminDashboard() {
           onChange={onChange}
           size="small"
           style={{ width: 120 }}
-        >
-          {opts.map(opt => (
-            <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
-          ))}
-        </Select>
+          options={opts}
+        />
         {value === 'custom' && (
           <DatePicker
             value={customDate}
             onChange={onCustomDateChange}
             placeholder="Start date"
             size="small"
-            disabledDate={(current) => current && current > new Date()}
+            disabledDate={(current) => !!current && current.toDate() > new Date()}
           />
         )}
       </div>
@@ -545,14 +596,16 @@ export default function AdminDashboard() {
   // Loading state
   if (loadingUsers || loadingStats || loadingClockedIn) {
     return (
-      <div className="p-6">
-        <Skeleton active paragraph={{ rows: 8 }} />
+      <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <Skeleton active paragraph={{ rows: 8 }} />
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="bg-gray-50 min-h-screen">
+    <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         {/* Header */}
         <div className="mb-8">
@@ -659,15 +712,51 @@ export default function AdminDashboard() {
                     <p>No one is currently working</p>
                   </div>
                 ) : (
-                  <Table 
-                    size="small"
-                    rowKey="userId"
-                    dataSource={uniqueClockedIn}
-                    columns={columnsClocked}
-                    pagination={false}
-                    loading={loadingClockedIn}
-                    className="border-0"
-                  />
+                  <>
+                    {/* Desktop / Tablet Table */}
+                    <div className="hidden md:block">
+                      <Table 
+                        size="small"
+                        rowKey="userId"
+                        dataSource={uniqueClockedIn}
+                        columns={columnsClocked}
+                        pagination={false}
+                        loading={loadingClockedIn}
+                        className="border-0"
+                        sticky
+                        scroll={{ y: 300, x: true }}
+                      />
+                    </div>
+
+                    {/* Mobile Card List */}
+                    <div className="md:hidden">
+                      <div className="max-h-72 overflow-y-auto pr-1 divide-y divide-gray-100">
+                        {uniqueClockedIn.map((record) => (
+                          <div key={record.userId} className="py-2 flex items-center justify-between">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <Avatar size="small" className="bg-blue-100 text-blue-600 shrink-0">
+                                {record.user?.name?.[0]?.toUpperCase() || record.userId?.[0]?.toUpperCase() || 'U'}
+                              </Avatar>
+                              <div className="min-w-0">
+                                <div className="font-medium text-sm truncate max-w-[160px]">
+                                  {record.user?.name || record.user?.email?.split('@')[0] || 'Unknown User'}
+                                </div>
+                                <div className="text-[11px] text-gray-500">
+                                  {new Date(record.clockInAt).toLocaleTimeString()} • {new Date(record.clockInAt).toLocaleDateString()}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Tag icon={<CheckCircleOutlined />} color="success" className="m-0">Active</Tag>
+                              <Tooltip title={`${record.clockInLat}, ${record.clockInLng}`}>
+                                <EnvironmentOutlined className="text-blue-500" />
+                              </Tooltip>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </>
                 )}
                 <div className="text-right">
                   <Button type="link" size="small" className="text-xs">
@@ -693,8 +782,8 @@ export default function AdminDashboard() {
                     placeholder="Search team members..." 
                     className="w-64"
                     size="middle"
-                    onSearch={(val) => refetchUsers({ search: val })}
-                    onChange={(e) => refetchUsers({ search: e.target.value })}
+                    onSearch={(val) => debouncedSearch(val)}
+                    onChange={(e) => debouncedSearch(e.target.value)}
                   />
                 </div>
               </div>
