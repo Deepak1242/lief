@@ -33,7 +33,7 @@ export default function Hero() {
           
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <Link
-              href="/api/auth/login?returnTo=/post-login"
+              href="/api/auth/signin?callbackUrl=/post-login"
               className="group relative inline-flex items-center justify-center gap-2 overflow-hidden rounded-xl bg-blue-600 px-6 py-4 font-semibold text-white shadow-lg transition-all duration-300 hover:bg-blue-700 hover:shadow-xl hover:ring-2 hover:ring-blue-400 hover:ring-offset-2"
             >
               <span>Get Started Free</span>

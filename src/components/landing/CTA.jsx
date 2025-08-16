@@ -39,7 +39,7 @@ export default function CTA() {
               className="w-full sm:w-auto"
             >
               <Link
-                href="/api/auth/login?screen_hint=signup&returnTo=/post-login"
+                href="/api/auth/signin?callbackUrl=/post-login"
                 className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-white px-8 py-4 text-base font-semibold !text-white border border-white/50 shadow-lg transition-all duration-300 hover:shadow-xl hover:ring-2 hover:ring-white/50 hover:ring-offset-2 sm:text-lg"
               >
                 <span>Start Free Trial</span>
@@ -53,7 +53,7 @@ export default function CTA() {
               className="w-full sm:w-auto"
             >
               <Link
-                href="/api/auth/login?returnTo=/post-login"
+                href="/api/auth/signin?callbackUrl=/post-login"
                 className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl bg-white px-8 py-4 text-base font-semibold !text-white border border-white/50 shadow-lg transition-all duration-300 hover:shadow-xl hover:ring-2 hover:ring-white/50 hover:ring-offset-2 sm:text-lg"
               >
                 Schedule a Demo

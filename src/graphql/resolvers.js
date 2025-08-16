@@ -1,7 +1,8 @@
 import { GraphQLDateTime } from 'graphql-scalars'
 import prisma from '@/lib/prisma'
 import { haversineKm } from '@/lib/geo'
-import { getSession } from '@auth0/nextjs-auth0'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/authOptions'
 
 async function getActiveLocation() {
   return prisma.location.findFirst({ where: { active: true } })
@@ -14,32 +15,69 @@ function withinPerimeter(lat, lng, location) {
 }
 
 async function getCurrentUser(req, res) {
-  // Prefer Auth0 session (edge SDK for App Router). Fallback to testing headers if absent.
+  // Get user from NextAuth session
   try {
-    const session = await getSession(req, res)
+    console.log('Getting current user from NextAuth session');
+    const session = await getServerSession(authOptions);
+    
     if (session?.user) {
-      const { sub, email, name } = session.user
-      if (!sub) return null
-      let user = await prisma.user.findUnique({ where: { auth0Id: sub } })
-      if (!user) {
-        user = await prisma.user.create({ data: { auth0Id: sub, email: email || `${sub}@example.com`, name: name || email || sub, role: 'CAREWORKER' } })
+      const { id, email, name } = session.user;
+      console.log('Session user found:', { id, email });
+      
+      if (!email) {
+        console.error('User missing email');
+        return null;
       }
-      return user
+      
+      console.log('Looking up user in database with email:', email);
+      let user = await prisma.user.findUnique({ where: { email } });
+      
+      if (!user) {
+        console.log('User not found in database, creating new user');
+        try {
+          user = await prisma.user.create({ 
+            data: { 
+              email, 
+              name: name || email.split('@')[0], 
+              role: session.user.role || 'CAREWORKER' 
+            } 
+          });
+          console.log('Created new user:', user);
+        } catch (createError) {
+          console.error('Failed to create user in getCurrentUser:', createError);
+          throw createError;
+        }
+      } else {
+        console.log('Found existing user:', user.id);
+      }
+      
+      return user;
+    } else {
+      console.log('No user in session');
     }
   } catch (e) {
+    console.error('Error in getCurrentUser:', e);
     // ignore and fallback
   }
+  
   // Fallback headers for local testing
   const role = req.headers.get('x-role') || 'CAREWORKER'
-  const auth0Id = req.headers.get('x-auth0-id') || null
   const email = req.headers.get('x-email') || null
   let user = null
-  if (auth0Id) {
-    user = await prisma.user.findUnique({ where: { auth0Id } })
-    if (!user && email) {
-      user = await prisma.user.create({ data: { auth0Id, email, role, name: email } })
+  
+  if (email) {
+    user = await prisma.user.findUnique({ where: { email } })
+    if (!user) {
+      user = await prisma.user.create({ 
+        data: { 
+          email, 
+          name: email.split('@')[0],
+          role 
+        } 
+      })
     }
   }
+  
   if (user) return user
   return null
 }
@@ -55,7 +93,7 @@ export const resolvers = {
 
   Query: {
     me: async (_p, _a, { req, res }) => getCurrentUser(req, res),
-    users: async (_p, { search }, { req }) => {
+    users: async (_p, { search }, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)
       if (!search) return prisma.user.findMany({ orderBy: { createdAt: 'desc' } })
@@ -109,9 +147,18 @@ export const resolvers = {
     dashboardStats: async (_p, _a, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)
-      // Avg hours/day for all staff (from Analytics)
-      const analytics = await prisma.analytics.groupBy({ by: ['date'], _avg: { totalHours: true } })
-      const avgHoursPerDayAll = analytics.reduce((s, a) => s + (a._avg.totalHours || 0), 0) / (analytics.length || 1)
+      // Hours/day aggregates (from Analytics)
+      const analyticsByDate = await prisma.analytics.groupBy({ by: ['date'], _avg: { totalHours: true }, _sum: { totalHours: true } })
+      const avgHoursPerDayAll = analyticsByDate.reduce((s, a) => s + (a._avg.totalHours || 0), 0) / (analyticsByDate.length || 1)
+      // Build daily total hours array keyed by YYYY-MM-DD
+      const hoursMap = {}
+      analyticsByDate.forEach((row) => {
+        const key = new Date(row.date).toISOString().slice(0, 10)
+        hoursMap[key] = (hoursMap[key] || 0) + (row._sum.totalHours || 0)
+      })
+      const dailyTotalHours = Object.entries(hoursMap)
+        .sort(([a], [b]) => (a < b ? -1 : 1))
+        .map(([date, hours]) => ({ date, hours }))
 
       // Number of people clocking in daily
       const dailyRaw = await prisma.shift.groupBy({ by: ['clockInAt'], _count: { _all: true } })
@@ -134,20 +181,39 @@ export const resolvers = {
       })
       const weeklyHoursPerStaff = weekRows.map((r) => ({ userId: r.userId, hours: r._sum.totalHours || 0 }))
 
-      return { avgHoursPerDayAll, dailyClockInCounts, weeklyHoursPerStaff }
+      return { avgHoursPerDayAll, dailyClockInCounts, weeklyHoursPerStaff, dailyTotalHours }
     },
     currentlyClockedIn: async (_p, _a, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)
-      return prisma.shift.findMany({ where: { clockOutAt: null }, orderBy: { clockInAt: 'desc' } })
+      
+      // Get unique users who are currently clocked in (no duplicates)
+      const shifts = await prisma.shift.findMany({ 
+        where: { clockOutAt: null }, 
+        include: { user: true },
+        orderBy: { clockInAt: 'desc' }
+      })
+      
+      // Remove duplicates by keeping only the latest shift per user
+      const uniqueShifts = []
+      const seenUsers = new Set()
+      
+      for (const shift of shifts) {
+        if (!seenUsers.has(shift.userId)) {
+          seenUsers.add(shift.userId)
+          uniqueShifts.push(shift)
+        }
+      }
+      
+      return uniqueShifts
     },
   },
 
   Mutation: {
-    createUser: async (_p, { auth0Id, email, name, role }, { req, res }) => {
+    createUser: async (_p, { email, name, role }, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)
-      return prisma.user.create({ data: { auth0Id, email, name, role } })
+      return prisma.user.create({ data: { email, name, role } })
     },
     deleteUser: async (_p, { id }, { req, res }) => {
       const me = await getCurrentUser(req, res)

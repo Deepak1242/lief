@@ -3,9 +3,10 @@ import { startServerAndCreateNextHandler } from '@as-integrations/next';
 import { resolvers } from '@/graphql/resolvers';
 // Import the type definitions with the correct path
 import { typeDefs } from '@/graphql/typeDefs';
-import { getSession } from '@auth0/nextjs-auth0';
+import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/lib/authOptions';
 import prisma from '@/lib/prisma';
-import { syncAuth0User } from '@/lib/auth0/userSync';
+import { syncUser } from '@/lib/auth';
 
 console.log('Initializing Apollo Server with typeDefs and resolvers');
 
@@ -17,32 +18,93 @@ const server = new ApolloServer({
   introspection: process.env.NODE_ENV !== 'production',
 });
 
-// Create the handler with proper context
+// Create the handler with proper context - do this ONCE outside of the request handler
+const graphqlHandler = startServerAndCreateNextHandler(server, {
+  context: async ({ req, res }) => {
+    // Context will be built for each request
+    let session = null;
+    let dbUser = null;
+    try {
+      session = await getServerSession(authOptions);
+      if (session?.user?.email) {
+        dbUser = await syncUser(session.user);
+      }
+    } catch (error) {
+      console.error('Error setting up GraphQL context:', error);
+    }
+    
+    return {
+      req,
+      res,
+      session,
+      user: dbUser,
+      prisma,
+    };
+  },
+});
+
+// Request handler
 const handler = async (req, res) => {
   try {
     console.log('--- New GraphQL Request ---');
     console.log('Request URL:', req.url);
     console.log('Request method:', req.method);
     
-    // Get the Auth0 session
-    console.log('Fetching Auth0 session...');
-    const session = await getSession(req, res);
-    console.log('Auth0 session:', session ? 'Found' : 'Not found');
+    // Get the NextAuth session
+    console.log('Fetching NextAuth session...');
+    const session = await getServerSession(authOptions);
+    console.log('NextAuth session:', session ? 'Found' : 'Not found');
     
     let dbUser = null;
 
-    // Sync Auth0 user with our database
+    // Sync user with our database
     if (session?.user) {
-      console.log('Auth0 user found, syncing with database...');
-      console.log('Auth0 user data:', {
-        sub: session.user.sub,
+      console.log('User found in session, syncing with database...');
+      console.log('User data:', {
+        id: session.user.id,
         email: session.user.email,
-        name: session.user.name
+        name: session.user.name,
+        role: session.user.role
       });
       
+      // Validate required user fields
+      if (!session.user.email) {
+        console.error('User missing required email');
+        return new Response(JSON.stringify({
+          errors: [{ message: 'User missing required email' }]
+        }), { status: 400 });
+      }
+      
+      if (!session.user.email) {
+        console.error('User missing required email');
+        return new Response(JSON.stringify({
+          errors: [{ message: 'User missing required email' }]
+        }), { status: 400 });
+      }
+      
       try {
-        dbUser = await syncAuth0User(session.user);
-        console.log('Database user after sync:', dbUser);
+        console.log('Syncing user to database...');
+        try {
+          dbUser = await syncUser(session.user);
+          console.log('Database user after sync:', dbUser ? `ID: ${dbUser.id}, Role: ${dbUser.role}` : 'No user returned');
+          
+          if (!dbUser) {
+            console.error('User sync completed but no user was returned');
+            return new Response(JSON.stringify({
+              errors: [{ message: 'Failed to sync user with database - no user returned' }]
+            }), { status: 500 });
+          }
+        } catch (syncError) {
+          console.error('Error syncing user with database:', {
+            message: syncError.message,
+            code: syncError.code,
+            meta: syncError.meta
+          });
+          
+          return new Response(JSON.stringify({
+            errors: [{ message: `Database sync error: ${syncError.message}` }]
+          }), { status: 500 });
+        }
       } catch (error) {
         console.error('Error syncing user:', {
           message: error.message,
@@ -51,14 +113,14 @@ const handler = async (req, res) => {
         });
       }
     } else {
-      console.log('No Auth0 user found in session');
+      console.log('No user found in session');
     }
 
     const context = {
       // Pass the request and response objects
       req,
       res,
-      // Include the Auth0 session
+      // Include the session
       session,
       // Include the database user if available
       user: dbUser,
@@ -73,11 +135,7 @@ const handler = async (req, res) => {
     });
 
     try {
-      // Use the startServerAndCreateNextHandler with our context
-      const graphqlHandler = startServerAndCreateNextHandler(server, {
-        context: async () => context,
-      });
-      
+      // Use the pre-created graphqlHandler
       const response = await graphqlHandler(req, res);
       console.log('GraphQL response status:', response.status);
       return response;

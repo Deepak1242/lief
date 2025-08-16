@@ -1,21 +1,39 @@
 "use client";
 import { ApolloClient, InMemoryCache, HttpLink, ApolloProvider } from "@apollo/client";
-import { UserProvider } from "@auth0/nextjs-auth0/client";
+import { setContext } from "@apollo/client/link/context";
+import { SessionProvider } from "next-auth/react";
 import { ConfigProvider, App as AntApp, theme } from "antd";
+import { AuthProvider } from "@/contexts/AuthContext";
+
+const httpLink = new HttpLink({ uri: "/api/graphql", credentials: "include" });
+
+// In development, allow impersonating a user via localStorage headers
+// window.localStorage keys: devEmail, devRole (e.g., ADMIN or CAREWORKER)
+const devAuthLink = setContext((_, { headers }) => {
+  if (typeof window === "undefined") return { headers };
+  const devEmail = window.localStorage.getItem("devEmail");
+  const devRole = window.localStorage.getItem("devRole");
+  const extra = {};
+  if (devEmail) extra["x-email"] = devEmail;
+  if (devRole) extra["x-role"] = devRole;
+  return { headers: { ...headers, ...extra } };
+});
 
 const client = new ApolloClient({
-  link: new HttpLink({ uri: "/api/graphql", credentials: "include" }),
+  link: devAuthLink.concat(httpLink),
   cache: new InMemoryCache(),
 });
 
 export default function Providers({ children }) {
   return (
-    <UserProvider>
+    <SessionProvider>
       <ApolloProvider client={client}>
-        <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
-          <AntApp>{children}</AntApp>
-        </ConfigProvider>
+        <AuthProvider>
+          <ConfigProvider theme={{ algorithm: theme.defaultAlgorithm }}>
+            <AntApp>{children}</AntApp>
+          </ConfigProvider>
+        </AuthProvider>
       </ApolloProvider>
-    </UserProvider>
+    </SessionProvider>
   );
 }

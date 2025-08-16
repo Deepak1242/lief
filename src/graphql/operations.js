@@ -22,12 +22,33 @@ export const SET_ACTIVE_LOCATION = gql`
   mutation SetActiveLocation($id: ID!) { setActiveLocation(id: $id) { id active } }
 `;
 
+export const DELETE_LOCATION = gql`
+  mutation DeleteLocation($id: ID!) { deleteLocation(id: $id) }
+`;
+
 export const CURRENTLY_CLOCKED_IN = gql`
-  query CurrentlyClockedIn { currentlyClockedIn { id userId clockInAt clockInLat clockInLng } }
+  query CurrentlyClockedIn { 
+    currentlyClockedIn { 
+      id 
+      userId 
+      clockInAt 
+      clockInLat 
+      clockInLng 
+      user {
+        id
+        name
+        email
+      }
+    } 
+  }
 `;
 
 export const USERS = gql`
   query Users($search: String) { users(search: $search) { id name email role } }
+`;
+
+export const USER = gql`
+  query User($id: ID!) { user(id: $id) { id name email role } }
 `;
 
 export const DELETE_USER = gql`
@@ -43,6 +64,7 @@ export const DASHBOARD_STATS = gql`
     dashboardStats {
       avgHoursPerDayAll
       dailyClockInCounts { date count }
+      dailyTotalHours { date hours }
       weeklyHoursPerStaff { userId hours }
     }
   }
@@ -66,4 +88,32 @@ export const MY_SHIFTS = gql`
 
 export const ANALYTICS_ME = gql`
   query AnalyticsMe($from: DateTime, $to: DateTime) { analytics(from: $from, to: $to) { id date totalHours shiftCount } }
+`;
+
+export const ANALYTICS = gql`
+  query Analytics($userId: ID, $from: DateTime, $to: DateTime) {
+    analytics(userId: $userId, from: $from, to: $to) { id date totalHours shiftCount }
+  }
+`;
+
+export const SHIFTS_ADMIN = gql`
+  query ShiftsAdmin($userId: ID, $from: DateTime, $to: DateTime) {
+    shifts(userId: $userId, from: $from, to: $to) {
+      id
+      clockInAt
+      clockOutAt
+      clockInLat
+      clockInLng
+      clockOutLat
+      clockOutLng
+      clockInNote
+      clockOutNote
+    }
+  }
+`;
+
+export const ADMIN_REBUILD_ANALYTICS = gql`
+  mutation AdminRebuildAnalytics($userId: ID, $from: DateTime, $to: DateTime) {
+    adminRebuildAnalytics(userId: $userId, from: $from, to: $to)
+  }
 `;

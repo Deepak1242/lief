@@ -2,38 +2,130 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, isValidElement, cloneElement } from "react";
 import { useMutation, useQuery } from "@apollo/client";
 import { ANALYTICS_ME, CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
-import { 
-  Button, Card, Col, Flex, Form, Input, Row, Space, Statistic, Table, Tag, Tooltip, message, 
-  Typography, Divider, Badge, Skeleton, Progress, Alert 
-} from 'antd';
-import { 
-  ClockCircleOutlined, EnvironmentOutlined, 
-  CheckCircleOutlined, StopOutlined, 
-  LoadingOutlined, CompassOutlined,
-  ClockCircleFilled, CheckCircleFilled, 
-  InfoCircleOutlined, HistoryOutlined,
-  AimOutlined, PauseCircleOutlined
-} from '@ant-design/icons';
+import { Line } from "react-chartjs-2";
+import {
+  Chart as ChartJS,
+  LineElement,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  Tooltip as ChartTooltip,
+  Legend,
+  Filler,
+} from "chart.js";
 
-const { Title, Text } = Typography;
+ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, ChartTooltip, Legend, Filler);
 
-// Reusable StyledCard component
-const StyledCard = ({ children, title, extra, loading = false, className = '', ...props }) => (
-  <Card 
-    className={`shadow-sm hover:shadow-md transition-shadow duration-300 border-0 ${className}`}
-    title={title && <div className="px-6 pt-4 pb-2 text-lg font-medium">{title}</div>}
-    extra={extra}
-    {...props}
-  >
-    <div className="p-6">
-      {loading ? (
-        <Skeleton active paragraph={{ rows: 4 }} />
-      ) : (
-        children
-      )}
+// Blocking Dialog Component
+const LocationRequiredDialog = ({ onRetry }) => (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+    <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+      <div className="text-center">
+        <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 mb-4">
+          <svg className="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+          </svg>
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Location Access Required</h3>
+        <p className="text-sm text-gray-500 mb-6">
+          To use the clock in/out feature, you need to enable location access in your browser settings.
+          Please enable location permissions and refresh the page.
+        </p>
+        <div className="flex flex-col space-y-3 sm:flex-row sm:space-y-0 sm:space-x-3 justify-center">
+          <button
+            onClick={onRetry}
+            className="inline-flex justify-center px-4 py-2 text-sm font-medium text-white bg-blue-600 border border-transparent rounded-md shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            I've Enabled Location
+          </button>
+          <a
+            href="https://support.google.com/chrome/answer/142065"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex justify-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+          >
+            How to Enable Location
+          </a>
+        </div>
+      </div>
     </div>
-  </Card>
+  </div>
 );
+
+// Inline SVG icons
+const IconLocation = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7Zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5Z"/>
+  </svg>
+);
+const IconClock = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>
+  </svg>
+);
+const IconHistory = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 3v6h6"/><path d="M12 7v5l3 3"/>
+  </svg>
+);
+const IconStop = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <rect x="6" y="6" width="12" height="12" rx="2"/>
+  </svg>
+);
+const IconPause = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+    <rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/>
+  </svg>
+);
+const IconCheck = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="m20 6-11 11-5-5"/>
+  </svg>
+);
+const IconInfo = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>
+  </svg>
+);
+const IconAim = ({ className = "w-5 h-5" }) => (
+  <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <path d="M12 1v4M12 19v4M1 12h4M19 12h4"/><circle cx="12" cy="12" r="3"/>
+  </svg>
+);
+const IconSpinner = ({ className = "w-4 h-4" }) => (
+  <svg className={`animate-spin ${className}`} viewBox="0 0 24 24" fill="none" aria-hidden>
+    <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" opacity="0.25"/>
+    <path d="M22 12a10 10 0 0 1-10 10" fill="currentColor"/>
+  </svg>
+);
+
+// Reusable StyledCard component (Tailwind-only)
+const StyledCard = ({ children, title, extra, loading = false, className = '', gradient = false }) => {
+  const inner = (
+    <div className={`bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow duration-300 ${className}`}>
+      {(title || extra) && (
+        <div className="px-6 pt-4 pb-2 flex items-center justify-between">
+          {title && <div className="text-lg font-medium">{title}</div>}
+          {extra}
+        </div>
+      )}
+      <div className="p-6">
+        {loading ? (
+          <div className="space-y-3">
+            <div className="h-4 bg-gray-200/70 rounded animate-pulse" />
+            <div className="h-4 bg-gray-200/70 rounded animate-pulse w-5/6" />
+            <div className="h-4 bg-gray-200/70 rounded animate-pulse w-4/6" />
+          </div>
+        ) : (
+          children
+        )}
+      </div>
+    </div>
+  );
+  if (!gradient) return inner;
+  return <div className="rounded-2xl mt-4 p-[1px] bg-gradient-to-br from-blue-300 via-white to-blue-300">{inner}</div>;
+};
 
 // Reusable StatCard component
 // Color mapping for dynamic colors
@@ -46,6 +138,206 @@ const colorMap = {
   // Add more colors as needed
   default: { bg: 'bg-gray-50', text: 'text-gray-500' }
 };
+
+// Header section
+const StatusHeader = ({ openShift, formatTime, currentTimeText }) => (
+  <div className="mb-6">
+    <div className="grid grid-cols-1 sm:grid-cols-3 items-center">
+      <div className="sm:justify-self-start justify-self-center flex items-center gap-2">
+        <h1 className="text-2xl sm:text-3xl font-semibold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent m-0 leading-none">Worker Dashboard</h1>
+        <span className="hidden sm:inline-flex items-center justify-center w-2 h-2 rounded-full bg-green-400 animate-pulse" aria-hidden />
+      </div>
+      <div className="justify-self-center mt-3 sm:mt-0 text-center">
+        <span className={`inline-block px-3 py-1 rounded-full text-sm font-medium shadow-sm ${openShift ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+          {openShift 
+            ? `Clocked in at ${formatTime(openShift.clockInAt)}`
+            : 'Ready to clock in'}
+        </span>
+      </div>
+      <div className="sm:justify-self-end justify-self-center mt-3 sm:mt-0">
+        <div className="inline-flex items-baseline gap-2 px-3 py-1 rounded-md bg-gray-50 border border-gray-100 shadow-sm">
+          <span className="font-mono text-gray-800 text-lg sm:text-xl font-semibold tracking-tight">{currentTimeText}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+// Compact location status card with glowing icon when inside perimeter
+const LocationStatusCard = ({ inside }) => (
+  <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100 h-full">
+    <div className="flex items-center justify-between">
+      <div>
+        <div className="text-sm font-medium text-gray-500">Location Status</div>
+        <div className={`mt-1 text-base font-semibold ${inside ? 'text-green-600' : 'text-gray-700'}`}>
+          {inside ? 'Inside Work Area' : 'Outside Work Area'}
+        </div>
+      </div>
+      <div className={`relative p-3 rounded-full ${inside ? 'bg-green-50 text-green-500' : 'bg-gray-50 text-gray-400'}`}>
+        <IconLocation className="w-5 h-5" />
+        {inside && (
+          <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse"></span>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+// Stats grid wrapper
+const StatsGrid = ({ children }) => (
+  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">{children}</div>
+);
+
+// Enhanced Time Clock section
+const presetNotes = [
+  'Starting shift',
+  'Lunch break',
+  'Back from break',
+  'Leaving site',
+  'At client location'
+];
+
+const TimeClockCard = ({
+  loading,
+  openShift,
+  pos,
+  geoLoading,
+  manualNote,
+  setManualNote,
+  handleClockIn,
+  handleClockOut,
+  clockingIn,
+  clockingOut
+}) => (
+  <StyledCard title="Time Clock" className="mb-10" loading={loading} gradient>
+    <div className="space-y-4">
+      <div className="flex flex-col items-stretch gap-4">
+        <div className="w-full">
+          <input
+            placeholder="Add a note (optional)"
+            value={manualNote}
+            onChange={(e) => setManualNote(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { (openShift ? handleClockOut : handleClockIn)(); } }}
+            disabled={clockingIn || clockingOut || !pos}
+            className="w-full border border-gray-200 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
+          />
+          <div className="flex flex-wrap gap-2 mt-2 justify-center">
+            {presetNotes.map((n) => (
+              <span
+                key={n}
+                className="cursor-pointer m-0 px-2 py-1 text-xs rounded-full bg-gray-100 hover:bg-gray-200"
+                onClick={() => setManualNote((prev) => prev ? `${prev} ${n}` : n)}
+              >{n}</span>
+            ))}
+          </div>
+        </div>
+        <div className="flex flex-col sm:flex-row justify-center items-center gap-3 w-full">
+          <button
+            onClick={handleClockIn}
+            disabled={!!openShift || clockingOut || !pos}
+            className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto h-12 px-6 rounded-md text-white ${(!openShift && pos ? 'bg-blue-600 hover:bg-blue-700' : 'bg-gray-300 cursor-not-allowed')}`}
+            title={!pos ? 'Location required' : !openShift ? 'Clock In' : 'Already clocked in'}
+          >
+            {!openShift ? <IconCheck className="w-5 h-5"/> : <IconPause className="w-5 h-5"/>}
+            {!openShift ? 'Clock In' : 'Clocked In'}
+          </button>
+          <button
+            onClick={handleClockOut}
+            disabled={!openShift || clockingIn || !pos}
+            className={`inline-flex items-center justify-center gap-2 w-full sm:w-auto h-12 px-6 rounded-md text-white ${(openShift && pos ? 'bg-red-600 hover:bg-red-700' : 'bg-gray-300 cursor-not-allowed')}`}
+            title={!pos ? 'Location required' : openShift ? 'Clock Out' : 'No active shift'}
+          >
+            <IconStop className="w-5 h-5"/>
+            Clock Out
+          </button>
+        </div>
+      </div>
+      <div className="flex items-center justify-center text-sm text-gray-500 pt-2 border-t border-gray-100">
+        {geoLoading ? (
+          <span className="flex items-center"><IconSpinner className="w-4 h-4 mr-2"/>Getting location...</span>
+        ) : pos ? (
+          <span className="flex items-center"><IconCheck className="w-4 h-4 mr-2 text-green-500"/>Location: {pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}<span className="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded">±{pos.accuracy ? Math.round(pos.accuracy) : '?'}m</span></span>
+        ) : (
+          <span className="flex items-center"><IconInfo className="w-4 h-4 mr-2 text-orange-500"/>Location access required for clock in/out</span>
+        )}
+      </div>
+    </div>
+  </StyledCard>
+);
+
+// Recent shifts table (Tailwind)
+const RecentShiftsTable = ({ loading, data }) => (
+  <StyledCard title="Recent Shifts" className="mb-8 mt-2" loading={loading} gradient>
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="text-left text-gray-600">
+            <th className="px-4 py-2">Date</th>
+            <th className="px-4 py-2">Duration</th>
+            <th className="px-4 py-2">Status</th>
+            <th className="px-4 py-2">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(data || []).slice(0,5).map((record) => (
+            <tr key={record.id} className="border-t border-gray-100 hover:bg-gray-50">
+              <td className="px-4 py-2">{formatDateTime(record.clockInAt)}</td>
+              <td className="px-4 py-2">{!record.clockOutAt ? 'In Progress' : formatDuration((new Date(record.clockOutAt) - new Date(record.clockInAt)) / (1000 * 60))}</td>
+              <td className="px-4 py-2">
+                <span className={`px-2 py-0.5 rounded-full text-xs ${!record.clockOutAt ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}`}>
+                  {!record.clockOutAt ? 'Active' : 'Completed'}
+                </span>
+              </td>
+              <td className="px-4 py-2">
+                <div className="max-w-xs truncate" title={`${record.clockInNote || ''}${record.clockOutNote ? ` | ${record.clockOutNote}` : ''}`}>
+                  {record.clockInNote || '--'}{record.clockOutNote && ` | ${record.clockOutNote}`}
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </StyledCard>
+);
+
+// Work location info
+const WorkLocationCard = ({ activeLoc }) => (
+  <StyledCard title="Work Location" className="mb-6" gradient>
+    <div className="space-y-2">
+      <div className="flex items-center">
+        <IconLocation className="w-5 h-5 mr-2 text-blue-500" />
+        <span className="font-medium">{activeLoc.name}</span>
+      </div>
+      <div className="text-sm text-gray-600">
+        {activeLoc.address}
+      </div>
+      <div className="text-sm">
+        <span className="text-gray-500">Radius: </span>
+        <span>{activeLoc.radiusKm} km</span>
+      </div>
+    </div>
+  </StyledCard>
+);
+
+// Tracking status footer
+const TrackingStatusBar = ({ pos }) => (
+  <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+    <div className="flex items-center justify-between">
+      <div className="flex items-center">
+        <div className={`w-3 h-3 rounded-full mr-2 ${pos ? 'bg-green-500' : 'bg-red-500'}`}></div>
+        <span className="text-sm font-medium">
+          {pos ? 'Location tracking active' : 'Location access required'}
+        </span>
+      </div>
+      <div className="text-xs text-gray-500">
+        {pos 
+          ? 'Your location is being tracked for auto clock in/out' 
+          : 'Please enable location access in your browser settings to use clock in/out features'}
+      </div>
+    </div>
+  </div>
+);
 
 const StatCard = ({ 
   title = '', 
@@ -68,12 +360,12 @@ const StatCard = ({
   };
   
   return (
-    <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
+    <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100 h-full">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-sm font-medium text-gray-500">{title}</div>
           {loading ? (
-            <Skeleton.Input active size="large" style={{ width: 60 }} className="mt-2" />
+            <div className="mt-2 h-6 w-16 bg-gray-200 rounded animate-pulse" />
           ) : (
             <div className="flex items-baseline mt-1">
               <span className="text-2xl font-semibold">{value}</span>
@@ -169,8 +461,7 @@ function useGeolocation(enabled) {
   return { 
     pos, 
     error, 
-    isLoading, 
-    isWatching: watchIdRef.current !== null 
+    isLoading 
   };
 }
 
@@ -236,51 +527,86 @@ export default function WorkerDashboard() {
     pollInterval: 15000 
   });
   
+  // Analytics range state and query
+  const [range, setRange] = useState('month'); // day | month | year | custom
+  const [customStart, setCustomStart] = useState(null); // YYYY-MM-DD
+  const getDateRange = useCallback((r, custom) => {
+    // Always set end to the end of the current day to include all data for today
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    
+    let start;
+    switch (r) {
+      case 'day': {
+        // For 'day', set start to beginning of today
+        start = new Date();
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'year': {
+        // For 'year', set start to exactly 1 year ago from today
+        start = new Date();
+        start.setFullYear(start.getFullYear() - 1);
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'custom': {
+        // For custom date, use the provided date or default to 30 days ago
+        start = custom ? new Date(custom) : new Date();
+        if (!custom) {
+          start.setDate(start.getDate() - 30);
+        }
+        start.setHours(0, 0, 0, 0);
+        break;
+      }
+      case 'month':
+      default: {
+        // For 'month', set start to exactly 30 days ago
+        start = new Date();
+        start.setDate(start.getDate() - 30);
+        start.setHours(0, 0, 0, 0);
+      }
+    }
+    return { start, end };
+  }, []);
+  const dateRange = useMemo(() => getDateRange(range, customStart), [range, customStart, getDateRange]);
   const { data: analyticsData, loading: analyticsLoading, refetch: refetchAnalytics } = useQuery(
-    ANALYTICS_ME, 
-    { 
-      variables: { range: 'week' },
-      fetchPolicy: 'cache-and-network'
+    ANALYTICS_ME,
+    {
+      variables: { from: dateRange.start, to: dateRange.end },
+      fetchPolicy: 'cache-and-network',
     }
   );
 
-  // Message API instance
-  const [messageApi, contextHolder] = message.useMessage();
-
-  // Track messages to show
-  const [messageToShow, setMessageToShow] = useState({ type: '', content: '' });
-
-  // Effect to show messages
-  useEffect(() => {
-    if (messageToShow.type && messageToShow.content) {
-      messageApi[messageToShow.type](messageToShow.content);
-      setMessageToShow({ type: '', content: '' });
-    }
-  }, [messageToShow, messageApi]);
+  // Simple notify helper (replace antd message)
+  const notify = useCallback((type, text) => {
+    const fn = type === 'error' ? console.error : console.log;
+    fn(text);
+  }, []);
 
   // Clock in/out mutations with loading states
   const [clockIn, { loading: clockingIn }] = useMutation(CLOCK_IN, { 
     onCompleted: () => { 
-      setMessageToShow({ type: 'success', content: 'Successfully clocked in' });
+      notify('success', 'Successfully clocked in');
       refetchShifts(); 
       refetchAnalytics(); 
     },
     onError: (err) => {
       console.error("Clock in error:", err);
       const errorMessage = err?.message || 'An unknown error occurred';
-      setMessageToShow({ type: 'error', content: `Failed to clock in: ${errorMessage}` });
+      notify('error', `Failed to clock in: ${errorMessage}`);
     }
   });
   
   const [clockOut, { loading: clockingOut }] = useMutation(CLOCK_OUT, { 
     onCompleted: () => { 
-      setMessageToShow({ type: 'success', content: 'Successfully clocked out' });
+      notify('success', 'Successfully clocked out');
       refetchShifts(); 
       refetchAnalytics(); 
     },
     onError: (err) => {
       console.error("Clock out error:", err);
-      message.error(`Failed to clock out: ${err.message}`);
+      notify('error', `Failed to clock out: ${err.message}`);
     }
   });
 
@@ -289,13 +615,76 @@ export default function WorkerDashboard() {
   const openShift = useMemo(() => (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null, [shiftsData]);
   const recentShifts = useMemo(() => (shiftsData?.shifts || []).slice(0, 10), [shiftsData]);
   const loading = meLoading || locLoading || shiftsLoading || analyticsLoading;
+  const [metric, setMetric] = useState('hours'); // 'hours' | 'entries'
 
   // Location tracking state
-  const [tracking, setTracking] = useState(false);
+  const [locationDenied, setLocationDenied] = useState(false);
+  const [showLocationDialog, setShowLocationDialog] = useState(false);
   const [manualNote, setManualNote] = useState("");
-  const { pos, error: geoError, isLoading: geoLoading, isWatching } = useGeolocation(tracking);
+  // Always enable location tracking
+  const { pos, error: geoError, isLoading: geoLoading } = useGeolocation(true);
   const [distanceFromWork, setDistanceFromWork] = useState(null);
   const lastStatusRef = useRef(null);
+  const locationChecked = useRef(false);
+
+  // Check location permissions on mount
+  useEffect(() => {
+    if ('geolocation' in navigator) {
+      navigator.permissions.query({ name: 'geolocation' })
+        .then((permissionStatus) => {
+          const isDenied = permissionStatus.state === 'denied';
+          setLocationDenied(isDenied);
+          setShowLocationDialog(isDenied);
+          locationChecked.current = true;
+          
+          permissionStatus.onchange = () => {
+            const newState = permissionStatus.state === 'denied';
+            setLocationDenied(newState);
+            setShowLocationDialog(newState);
+          };
+        });
+    } else {
+      setLocationDenied(true);
+      setShowLocationDialog(true);
+      locationChecked.current = true;
+    }
+  }, []);
+
+  // Handle geolocation errors
+  useEffect(() => {
+    if (geoError) {
+      console.error('Geolocation error:', geoError);
+      if (geoError.code === 1) { // PERMISSION_DENIED
+        setLocationDenied(true);
+        setShowLocationDialog(true);
+      }
+    }
+  }, [geoError]);
+
+  const handleRetryLocation = () => {
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        () => {
+          // Success
+          setLocationDenied(false);
+          setShowLocationDialog(false);
+        },
+        (error) => {
+          // Still denied
+          console.error('Location access still denied:', error);
+        }
+      );
+    }
+  };
+
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const currentTimeText = useMemo(() => (
+    now.toLocaleString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  ), [now]);
 
   // Calculate distance from work location and handle auto clock in/out
   useEffect(() => {
@@ -330,21 +719,190 @@ export default function WorkerDashboard() {
     }
   }, [pos, activeLoc, openShift, clockIn, clockOut]);
 
-  // Calculate stats
-  const todayHours = useMemo(() => {
-    if (!analyticsData?.analytics) return 0;
-    const today = new Date(); 
-    today.setHours(0, 0, 0, 0);
-    const todayData = analyticsData.analytics.find(
-      x => new Date(x.date).toDateString() === today.toDateString()
-    );
-    return todayData?.totalHours || 0;
-  }, [analyticsData]);
+  // Helper to generate date range with zero-filled data
+  const getDateRangeWithData = (start, end, data) => {
+    // Create a map of dates to their data for quick lookup
+    const dateMap = new Map();
+    (data || []).forEach(item => {
+      // Normalize date to YYYY-MM-DD format for consistent comparison
+      const itemDate = new Date(item.date);
+      const dateKey = itemDate.toISOString().split('T')[0];
+      dateMap.set(dateKey, {
+        hours: item.totalHours || 0,
+        count: item.shiftCount || 0
+      });
+    });
 
-  const weekHours = useMemo(() => {
-    if (!analyticsData?.analytics) return 0;
-    return analyticsData.analytics.reduce((sum, day) => sum + (day.totalHours || 0), 0);
-  }, [analyticsData]);
+    // Create array with all dates in range, zero-filled where no data exists
+    const result = [];
+    const current = new Date(start);
+    // Ensure we start at beginning of day
+    current.setHours(0, 0, 0, 0);
+    const endDate = new Date(end);
+    // Ensure we include the entire end day
+    endDate.setHours(23, 59, 59, 999);
+
+    // Loop through each day in the range
+    while (current <= endDate) {
+      const dateKey = current.toISOString().split('T')[0];
+      const dayData = dateMap.get(dateKey) || { hours: 0, count: 0 };
+      // Create a new date object to avoid reference issues
+      result.push({
+        date: new Date(current),
+        ...dayData
+      });
+      // Move to next day
+      current.setDate(current.getDate() + 1);
+    }
+    return result;
+  };
+
+  // Process analytics data with zero-fill and proper date handling
+  const { processedAnalytics, daysWithData } = useMemo(() => {
+    if (!analyticsData?.analytics?.length) return { processedAnalytics: [], daysWithData: 0 };
+    
+    const data = getDateRangeWithData(dateRange.start, dateRange.end, analyticsData.analytics);
+    const daysWithDataCount = data.filter(d => d.hours > 0).length;
+    
+    return {
+      processedAnalytics: data,
+      daysWithData: daysWithDataCount > 0 ? daysWithDataCount : 1 // Avoid division by zero
+    };
+  }, [analyticsData, dateRange]);
+
+  // Calculate all metrics in a single useMemo for consistency
+  const { todayHours, periodHours, periodEntries, avgHours } = useMemo(() => {
+    // Get today's date and format it for comparison
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    
+    // Find today's data by comparing date objects properly
+    const todayData = processedAnalytics.find(x => {
+      const itemDate = new Date(x.date);
+      itemDate.setHours(0, 0, 0, 0);
+      return itemDate.getTime() === today.getTime();
+    }) || { hours: 0 };
+    
+    const hours = processedAnalytics.reduce((sum, day) => sum + (day.hours || 0), 0);
+    const entries = processedAnalytics.reduce((sum, day) => sum + (day.count || 0), 0);
+    const avg = daysWithData > 0 ? hours / daysWithData : 0;
+    
+    return {
+      todayHours: todayData.hours || 0,
+      periodHours: hours,
+      periodEntries: entries,
+      avgHours: avg
+    };
+  }, [processedAnalytics, daysWithData]);
+
+  // Build mini chart data for worker
+  const workerChart = useMemo(() => {
+    // Format dates consistently for display
+    const labels = processedAnalytics.map(item => {
+      const date = new Date(item.date);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    });
+    
+    // Get values based on selected metric
+    const values = processedAnalytics.map(item => 
+      metric === 'hours' ? item.hours : item.count
+    );
+
+    // For 'day' range, highlight today's data point
+    const pointBackgroundColors = range === 'day' ? 
+      processedAnalytics.map(item => {
+        const itemDate = new Date(item.date);
+        itemDate.setHours(0, 0, 0, 0);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        return itemDate.getTime() === today.getTime() ? '#4361ee' : 'rgba(67, 97, 238, 0.6)';
+      }) : undefined;
+
+    return {
+      labels,
+      datasets: [
+        {
+          label: metric === 'hours' ? 'Daily Hours' : 'Daily Entries',
+          data: values,
+          borderColor: '#4361ee',
+          backgroundColor: 'rgba(67, 97, 238, 0.15)',
+          pointBackgroundColor: pointBackgroundColors,
+          pointRadius: range === 'day' ? 4 : 3,
+          fill: true,
+          tension: 0.35,
+        },
+      ],
+    };
+  }, [processedAnalytics, metric, range]);
+
+  // Define theme for chart styling
+  const theme = {
+    textSecondary: '#64748b', // Tailwind slate-500
+    gridLine: 'rgba(0, 0, 0, 0.03)'
+  };
+
+  const chartOptions = useMemo(() => ({
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+        titleFont: { size: 14, weight: 'bold' },
+        bodyFont: { size: 13 },
+        callbacks: {
+          label: function(context) {
+            const value = context.raw || 0;
+            if (metric === 'hours') {
+              return `${value.toFixed(2)} hours`;
+            }
+            return `${value} ${value === 1 ? 'entry' : 'entries'}`;
+          }
+        }
+      },
+    },
+    scales: {
+      x: { 
+        grid: { display: false }, 
+        ticks: { 
+          color: theme.textSecondary,
+          maxRotation: 45,
+          minRotation: 45,
+          autoSkip: true,
+          maxTicksLimit: 10
+        } 
+      },
+      y: { 
+        grid: { color: 'rgba(0, 0, 0, 0.03)' }, 
+        ticks: { 
+          color: theme.textSecondary,
+          callback: function(value) {
+            if (metric === 'hours') {
+              return value % 1 === 0 ? `${value}h` : '';
+            }
+            return value;
+          }
+        },
+        beginAtZero: true,
+        title: {
+          display: true,
+          text: metric === 'hours' ? 'Hours' : 'Entries',
+          color: theme.textSecondary
+        }
+      },
+    },
+    interaction: {
+      intersect: false,
+      mode: 'index',
+    },
+    elements: {
+      point: {
+        radius: 3,
+        hoverRadius: 5,
+        hoverBorderWidth: 2
+      }
+    }
+  }), [metric, theme]);
 
   const currentShiftDuration = useMemo(() => {
     if (!openShift?.clockInAt) return 0;
@@ -356,11 +914,11 @@ export default function WorkerDashboard() {
   // Handle clock in/out actions
   const handleClockIn = useCallback(() => {
     if (!pos) {
-      message.warning("Waiting for location...");
+      notify('info', 'Waiting for location...');
       return;
     }
     if (openShift) {
-      message.info("You're already clocked in");
+      notify('info', "You're already clocked in");
       return;
     }
     clockIn({ 
@@ -372,15 +930,15 @@ export default function WorkerDashboard() {
       } 
     });
     setManualNote("");
-  }, [pos, openShift, manualNote, clockIn, distanceFromWork]);
+  }, [pos, openShift, manualNote, clockIn, distanceFromWork, notify]);
 
   const handleClockOut = useCallback(() => {
     if (!pos) {
-      message.warning("Waiting for location...");
+      notify('info', 'Waiting for location...');
       return;
     }
     if (!openShift) {
-      message.info("No active shift to clock out from");
+      notify('info', 'No active shift to clock out from');
       return;
     }
     clockOut({ 
@@ -392,63 +950,17 @@ export default function WorkerDashboard() {
       } 
     });
     setManualNote("");
-  }, [pos, openShift, manualNote, clockOut, distanceFromWork]);
+  }, [pos, openShift, manualNote, clockOut, distanceFromWork, notify]);
 
-  // Toggle location tracking
-  const toggleTracking = useCallback(() => {
-    if (!("geolocation" in navigator)) {
-      message.error("Geolocation is not supported by your browser");
-      return;
-    }
-    setTracking(prev => !prev);
-  }, []);
-
-  // Table columns for shift history
-  const columnsLogs = [
-    {
-      title: 'Date',
-      dataIndex: 'clockInAt',
-      key: 'date',
-      render: (text) => formatDateTime(text),
-      sorter: (a, b) => new Date(a.clockInAt) - new Date(b.clockInAt),
-      defaultSortOrder: 'descend',
-    },
-    {
-      title: 'Duration',
-      key: 'duration',
-      render: (_, record) => {
-        if (!record.clockOutAt) return 'In Progress';
-        const duration = (new Date(record.clockOutAt) - new Date(record.clockInAt)) / (1000 * 60); // in minutes
-        return formatDuration(duration);
-      },
-    },
-    {
-      title: 'Status',
-      key: 'status',
-      render: (_, record) => (
-        <Tag color={!record.clockOutAt ? 'green' : 'default'}>
-          {!record.clockOutAt ? 'Active' : 'Completed'}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Notes',
-      dataIndex: 'clockInNote',
-      key: 'notes',
-      render: (text, record) => (
-        <div className="max-w-xs truncate" title={`${text || ''}${record.clockOutNote ? ` | ${record.clockOutNote}` : ''}`}>
-          {text || '--'}
-          {record.clockOutNote && ' | ' + record.clockOutNote}
-        </div>
-      ),
-    },
-  ];
+  // Tailwind table renders shift history directly
 
   // Render loading state
   if (loading) {
     return (
-      <div className="p-6">
-        <Skeleton active paragraph={{ rows: 10 }} />
+      <div className="p-6 space-y-3">
+        <div className="h-5 bg-gray-200 rounded animate-pulse w-1/3" />
+        <div className="h-40 bg-gray-100 rounded animate-pulse" />
+        <div className="h-64 bg-gray-100 rounded animate-pulse" />
       </div>
     );
   }
@@ -457,212 +969,132 @@ export default function WorkerDashboard() {
   if (geoError && !pos) {
     return (
       <div className="p-6">
-        <Alert
-          message="Location Access Required"
-          description="Please enable location services to use the clock in/out features."
-          type="error"
-          showIcon
-          action={
-            <Button type="primary" onClick={toggleTracking}>
-              Enable Location
-            </Button>
-          }
-        />
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4">
+          <div className="flex items-start gap-3">
+            <IconInfo className="w-5 h-5 text-red-600 mt-0.5" />
+            <div>
+              <div className="font-medium text-red-700">Location Access Required</div>
+              <div className="text-sm text-red-700/90">Please enable location services to use the clock in/out features.</div>
+              <div className="text-sm text-red-700/90 mt-2">You can still view other dashboard features, but clock in/out functionality is disabled until location access is granted.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state while checking location permissions
+  if (!locationChecked.current) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+          <p className="text-gray-600">Checking location access...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <Title level={3} className="mb-2">Worker Dashboard</Title>
-        <Text type="secondary">
-          {openShift 
-            ? `Clocked in at ${formatTime(openShift.clockInAt)}`
-            : 'Ready to clock in'}
-        </Text>
-      </div>
+    <div className="p-6 min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent relative">
+      {showLocationDialog && (
+        <LocationRequiredDialog onRetry={handleRetryLocation} />
+      )}
+      {showLocationDialog ? null : (
+        <div>
+          <StatusHeader openShift={openShift} formatTime={formatTime} currentTimeText={currentTimeText} />
 
-      {/* Status Cards */}
-      <Row gutter={[16, 16]} className="mb-6">
-        <Col xs={24} sm={12} md={6}>
-          <StatCard 
-            title={openShift ? "Current Shift" : "Status"}
-            value={openShift ? formatDuration(currentShiftDuration * 60) : "Clocked Out"}
-            icon={openShift ? <ClockCircleFilled /> : <StopOutlined />}
-            color={openShift ? "blue" : "gray"}
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <StatCard 
-            title="Today"
-            value={todayHours.toFixed(1)}
-            suffix="hours"
-            icon={<ClockCircleOutlined />}
-            color="green"
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <StatCard 
-            title="This Week"
-            value={weekHours.toFixed(1)}
-            suffix="hours"
-            icon={<HistoryOutlined />}
-            color="purple"
-            loading={loading}
-          />
-        </Col>
-        <Col xs={24} sm={12} md={6}>
-          <StatCard 
-            title="Distance from Work"
-            value={distanceFromWork !== null ? formatDistance(distanceFromWork) : '--'}
-            icon={<EnvironmentOutlined />}
-            color={activeLoc && distanceFromWork <= activeLoc.radiusKm ? 'green' : 'orange'}
-            loading={geoLoading || !pos}
-          />
-        </Col>
-      </Row>
-
-      {/* Clock In/Out Controls */}
-      <StyledCard 
-        title="Time Clock" 
-        className="mb-6"
-        loading={loading}
-      />
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-            <div className="flex-1 w-full">
-              <Input
-                placeholder="Add a note (optional)"
-                value={manualNote}
-                onChange={(e) => setManualNote(e.target.value)}
-                onPressEnter={openShift ? handleClockOut : handleClockIn}
-                disabled={clockingIn || clockingOut}
+          {/* Status Cards */}
+          <StatsGrid>
+            <div>
+              <StatCard 
+                title={openShift ? "Current Shift" : "Status"}
+                value={openShift ? formatDuration(currentShiftDuration * 60) : "Ready"}
+                icon={<IconClock />}
+                color={openShift ? "blue" : "green"}
               />
             </div>
-            <div className="flex flex-wrap gap-2 w-full sm:w-auto">
-              <Button 
-                type={!openShift ? "primary" : "default"}
-                size="large"
-                icon={!openShift ? <CheckCircleOutlined /> : <PauseCircleOutlined />}
-                loading={clockingIn}
-                onClick={handleClockIn}
-                disabled={!!openShift || clockingOut || !pos}
-                className="flex-1 sm:flex-none"
-              >
-                {!openShift ? 'Clock In' : 'Clocked In'}
-              </Button>
-              <Button 
-                type={openShift ? "primary" : "default"}
-                danger={!!openShift}
-                size="large"
-                icon={<StopOutlined />}
-                loading={clockingOut}
-                onClick={handleClockOut}
-                disabled={!openShift || clockingIn || !pos}
-                className="flex-1 sm:flex-none"
-              >
-                Clock Out
-              </Button>
-            </div>
-          </div>
-          
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 pt-2 border-t border-gray-100">
-            <div className="flex items-center text-sm text-gray-500">
-              {geoLoading ? (
-                <span className="flex items-center">
-                  <LoadingOutlined className="mr-2" />
-                  Getting location...
-                </span>
-              ) : pos ? (
-                <span className="flex items-center">
-                  <CheckCircleOutlined className="text-green-500 mr-2" />
-                  Location: {pos.lat.toFixed(5)}, {pos.lng.toFixed(5)}
-                  <span className="ml-2 text-xs bg-gray-100 px-2 py-0.5 rounded">
-                    ±{pos.accuracy ? Math.round(pos.accuracy) : '?'}m
-                  </span>
-                </span>
-              ) : (
-                <span className="flex items-center">
-                  <InfoCircleOutlined className="text-orange-500 mr-2" />
-                  Location not available
-                </span>
-              )}
-            </div>
-            <Tooltip title={tracking ? 'Stop location tracking' : 'Track my location'}>
-              <Button 
-                type={tracking ? 'primary' : 'default'} 
-                icon={<AimOutlined />}
-                onClick={toggleTracking}
-                size="small"
-              >
-                {tracking ? 'Tracking' : 'Track'}
-              </Button>
-            </Tooltip>
-          </div>
-        </div>
-      {/* </StyledCard> */}
+          </StatsGrid>
 
-      {/* Shift History */}
-      <StyledCard 
-        title="Recent Shifts" 
-        className="mb-6"
-        loading={loading}
-      >
-        <Table 
-          rowKey="id"
-          columns={columnsLogs}
-          dataSource={recentShifts}
-          pagination={{ pageSize: 5, showSizeChanger: false }}
-          size="middle"
-        />
-      </StyledCard>
+          <TimeClockCard
+            loading={loading}
+            openShift={openShift}
+            pos={pos}
+            geoLoading={geoLoading}
+            manualNote={manualNote}
+            setManualNote={setManualNote}
+            handleClockIn={handleClockIn}
+            handleClockOut={handleClockOut}
+            clockingIn={clockingIn}
+            clockingOut={clockingOut}
+          />
 
-      {/* Work Location Info */}
-      {activeLoc && (
-        <StyledCard title="Work Location" className="mb-6">
-          <div className="space-y-2">
-            <div className="flex items-center">
-              <EnvironmentOutlined className="mr-2 text-blue-500" />
-              <span className="font-medium">{activeLoc.name}</span>
-            </div>
-            <div className="text-sm text-gray-600">
-              {activeLoc.address}
-            </div>
-            <div className="text-sm">
-              <span className="text-gray-500">Radius: </span>
-              <span>{activeLoc.radiusKm} km</span>
-            </div>
-            {distanceFromWork !== null && (
-              <div className="text-sm">
-                <span className="text-gray-500">Distance: </span>
-                <span className={distanceFromWork <= activeLoc.radiusKm ? 'text-green-600' : 'text-orange-600'}>
-                  {formatDistance(distanceFromWork)} {distanceFromWork <= activeLoc.radiusKm ? 'inside' : 'outside'} work area
-                </span>
+          {/* My Activity Chart */}
+          <StyledCard 
+            title="My Activity" 
+            extra={(
+              <div className="flex items-center gap-2">
+                <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+                  <button
+                    onClick={() => setMetric('hours')}
+                    className={`px-2 py-1 text-xs rounded ${metric === 'hours' ? 'bg-white shadow text-gray-800' : 'text-gray-600'}`}
+                  >Hours</button>
+                  <button
+                    onClick={() => setMetric('entries')}
+                    className={`px-2 py-1 text-xs rounded ${metric === 'entries' ? 'bg-white shadow text-gray-800' : 'text-gray-600'}`}
+                  >Entries</button>
+                </div>
+                <div className="flex items-center gap-1">
+                  <select
+                    className="border rounded px-2 py-1 text-xs bg-white"
+                    value={range}
+                    onChange={(e) => setRange(e.target.value)}
+                    title="Select range"
+                  >
+                    <option value="day">Day</option>
+                    <option value="month">Month</option>
+                    <option value="year">Year</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  {range === 'custom' && (
+                    <input
+                      type="date"
+                      className="border rounded px-2 py-1 text-xs"
+                      max={new Date().toISOString().split('T')[0]}
+                      value={customStart || ''}
+                      onChange={(e) => setCustomStart(e.target.value || null)}
+                    />
+                  )}
+                </div>
               </div>
             )}
-          </div>
-        </StyledCard>
-      )}
+            className="mb-8"
+            gradient
+          >
+            <div className="h-64">
+              {processedAnalytics.length > 0 ? (
+                <Line data={workerChart} options={chartOptions} />
+              ) : (
+                <div className="h-full flex items-center justify-center text-gray-500">No data in the selected range</div>
+              )}
+            </div>
+            <div className="mt-2 text-xs text-gray-500 text-right">
+              Showing {processedAnalytics.length} days from {dateRange.start.toLocaleDateString()} to {dateRange.end.toLocaleDateString()}
+            </div>
+          </StyledCard>
 
-      {/* Location Tracking Status */}
-      <div className="bg-white rounded-lg shadow-sm p-4 border border-gray-100">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center">
-            <div className={`w-3 h-3 rounded-full mr-2 ${tracking ? 'bg-green-500' : 'bg-gray-300'}`}></div>
-            <span className="text-sm font-medium">
-              {tracking ? 'Location tracking active' : 'Location tracking off'}
-            </span>
-          </div>
-          <div className="text-xs text-gray-500">
-            {tracking 
-              ? 'Your location is being tracked for auto clock in/out' 
-              : 'Enable tracking for automatic clock in/out when you arrive/leave work'}
-          </div>
+          {/* Shift History */}
+          <RecentShiftsTable loading={loading} data={recentShifts} />
+
+          {/* Work Location Info */}
+          {activeLoc && (
+            <WorkLocationCard activeLoc={activeLoc} />
+          )}
+
+          {/* Location Tracking Status */}
+          <TrackingStatusBar pos={pos} />
         </div>
-      </div>
+      )}
     </div>
   );
 }

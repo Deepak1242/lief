@@ -1,26 +1,30 @@
 "use client";
+import React, { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation } from "@apollo/client";
 import { 
   Button, Card, Col, Divider, Flex, Form, Input, InputNumber, Row, Table, 
-  Tag, Typography, message, Badge, Avatar, Statistic, Space, Tooltip, Skeleton 
+  Tag, Typography, message, Badge, Avatar, Statistic, Space, Tooltip, Skeleton,
+  Select, DatePicker 
 } from "antd";
 import { 
   ClockCircleOutlined, EnvironmentOutlined, TeamOutlined, BarChartOutlined,
-  UserAddOutlined, CheckCircleOutlined, UserSwitchOutlined, CalendarOutlined
+  UserAddOutlined, CheckCircleOutlined, UserSwitchOutlined,
+  DeleteOutlined, AimOutlined
 } from "@ant-design/icons";
 import { 
   CURRENTLY_CLOCKED_IN, LIST_LOCATIONS, SET_ACTIVE_LOCATION, 
-  UPSERT_LOCATION, USERS, DELETE_USER, PROMOTE_USER, DASHBOARD_STATS 
+  UPSERT_LOCATION, USERS, DELETE_USER, PROMOTE_USER, DASHBOARD_STATS, DELETE_LOCATION
 } from "@/graphql/operations";
-import { useEffect, useMemo, useState } from "react";
-import { Line } from "react-chartjs-2";
+import Link from "next/link";
+// React hooks are imported from default React import above
+import { Line, Bar } from "react-chartjs-2";
 import { 
-  Chart as ChartJS, LineElement, CategoryScale, LinearScale, 
-  PointElement, Tooltip, Legend, Filler 
+  Chart as ChartJS, LineElement, BarElement, CategoryScale, LinearScale, 
+  PointElement, Tooltip as ChartTooltip, Legend, Filler 
 } from "chart.js";
 
 // Register ChartJS components
-ChartJS.register(LineElement, CategoryScale, LinearScale, PointElement, Tooltip, Legend, Filler);
+ChartJS.register(LineElement, BarElement, CategoryScale, LinearScale, PointElement, ChartTooltip, Legend, Filler);
 
 // Theme configuration
 const theme = {
@@ -71,7 +75,7 @@ const StatCard = ({ title, value, icon, color, trend, trendText, loading }) => (
         )}
         {trend && (
           <div className={`text-xs mt-1 flex items-center ${trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
-            {trend > 0 ? '↑' : '↓'} {Math.abs(trend)}% {trendText}
+            {trend > 0 ? '\u2191' : '\u2193'} {Math.abs(trend)}% {trendText}
           </div>
         )}
       </div>
@@ -87,6 +91,11 @@ const StatCard = ({ title, value, icon, color, trend, trendText, loading }) => (
 export default function AdminDashboard() {
   const [form] = Form.useForm();
   const [activeTab, setActiveTab] = useState('overview');
+  const [locating, setLocating] = useState(false);
+  const [editLocId, setEditLocId] = useState(null);
+  const [timeRange, setTimeRange] = useState('weekly');
+  const [customStartDate, setCustomStartDate] = useState(null);
+  const [metric, setMetric] = useState('entries'); // 'entries' | 'hours'
   
   // Data fetching
   const { data: locData, loading: loadingLocations, refetch: refetchLocs } = useQuery(LIST_LOCATIONS);
@@ -99,16 +108,73 @@ export default function AdminDashboard() {
     fetchPolicy: 'cache-and-network'
   });
 
-  // Polling for real-time updates
+  // Live update currently clocked in every 10s
   useEffect(() => {
-    startPolling(5000);
+    startPolling(10000);
     return () => stopPolling();
   }, [startPolling, stopPolling]);
+
+  
+
+  // Calculate date ranges based on selected time range
+  const getDateRange = (range, customStart) => {
+    // Always set end to the end of the current day to include all data for today
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    
+    let start;
+    
+    if (range === 'custom' && customStart) {
+      start = new Date(customStart);
+      // Set to beginning of the day
+      start.setHours(0, 0, 0, 0);
+    } else {
+      switch (range) {
+        case 'today':
+          start = new Date();
+          start.setHours(0, 0, 0, 0);
+          break;
+        case 'weekly':
+        case 'week':
+          start = new Date();
+          start.setDate(start.getDate() - 7);
+          start.setHours(0, 0, 0, 0);
+          break;
+        case 'monthly':
+        case 'month':
+          start = new Date();
+          start.setDate(start.getDate() - 30);
+          start.setHours(0, 0, 0, 0);
+          break;
+        case 'yearly':
+        case 'year':
+          start = new Date();
+          start.setFullYear(start.getFullYear() - 1);
+          start.setHours(0, 0, 0, 0);
+          break;
+        default:
+          start = new Date();
+          start.setDate(start.getDate() - 7);
+          start.setHours(0, 0, 0, 0);
+      }
+    }
+    
+    return { start, end };
+  };
+
+  // Main dashboard date range
+  const mainDateRange = useMemo(() => getDateRange(timeRange, customStartDate), [timeRange, customStartDate]);
+  
+  
+
+  
 
   // Mutations
   const [upsertLocation, { loading: savingLoc }] = useMutation(UPSERT_LOCATION, {
     onCompleted: () => { 
       message.success("Location saved successfully"); 
+      setEditLocId(null);
+      form.resetFields();
       refetchLocs(); 
     },
   });
@@ -118,6 +184,17 @@ export default function AdminDashboard() {
       message.success("Active location updated"); 
       refetchLocs(); 
     },
+  });
+
+  const [deleteLocation, { loading: deletingLoc }] = useMutation(DELETE_LOCATION, {
+    onCompleted: () => {
+      message.success("Location deleted");
+      if (editLocId) {
+        setEditLocId(null);
+        form.resetFields();
+      }
+      refetchLocs();
+    }
   });
   
   const [deleteUser] = useMutation(DELETE_USER, { 
@@ -135,34 +212,115 @@ export default function AdminDashboard() {
   });
 
   // Derived state
-  const activeLoc = useMemo(() => locData?.locations?.find(l => l.active) || null, [locData]);
   const careWorkers = useMemo(() => usersData?.users?.filter(u => u.role === 'CAREWORKER') || [], [usersData]);
   const admins = useMemo(() => usersData?.users?.filter(u => u.role === 'ADMIN') || [], [usersData]);
-  const clockedInCount = useMemo(() => clockedData?.currentlyClockedIn?.length || 0, [clockedData]);
+  const totalUsers = useMemo(() => (usersData?.users || []).length, [usersData]);
+  const workersCount = useMemo(() => careWorkers.length, [careWorkers]);
+  const adminsCount = useMemo(() => admins.length, [admins]);
+  // Build a unique, latest-first list of currently clocked-in users (safety net if API ever returns dup shifts)
+  const uniqueClockedIn = useMemo(() => {
+    const list = (clockedData?.currentlyClockedIn || [])
+      .slice()
+      .sort((a, b) => new Date(b.clockInAt) - new Date(a.clockInAt));
+    const seen = new Set();
+    const result = [];
+    for (const s of list) {
+      if (!seen.has(s.userId)) {
+        seen.add(s.userId);
+        result.push(s);
+      }
+    }
+    return result;
+  }, [clockedData]);
+  // Count distinct users from the unique list
+  const clockedInCount = useMemo(() => uniqueClockedIn.length, [uniqueClockedIn]);
   const dailyCounts = useMemo(() => statsData?.dashboardStats?.dailyClockInCounts || [], [statsData]);
 
-  // Chart data
-  const chartData = useMemo(() => ({
-    labels: dailyCounts.map(d => {
-      const date = new Date(d.date);
-      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    }),
-    datasets: [{
-      label: 'Daily Clock-ins',
-      data: dailyCounts.map(d => d.count),
-      borderColor: theme.primary,
-      backgroundColor: 'rgba(67, 97, 238, 0.1)',
-      fill: true,
-      tension: 0.4,
-      pointBackgroundColor: theme.primary,
-      pointBorderColor: '#fff',
-      pointBorderWidth: 2,
-      pointRadius: 4,
-      pointHoverRadius: 6
-    }]
-  }), [dailyCounts]);
+  // Time range selector component
+  const TimeRangeSelector = ({ value, onChange, customDate, onCustomDateChange, options }) => {
+    const opts = options || [
+      { value: 'today', label: 'Today' },
+      { value: 'weekly', label: 'Week' },
+      { value: 'monthly', label: 'Month' },
+      { value: 'yearly', label: 'Year' },
+      { value: 'custom', label: 'Custom' },
+    ];
+    return (
+      <div className="flex items-center gap-2">
+        <Select
+          value={value}
+          onChange={onChange}
+          size="small"
+          style={{ width: 120 }}
+        >
+          {opts.map(opt => (
+            <Select.Option key={opt.value} value={opt.value}>{opt.label}</Select.Option>
+          ))}
+        </Select>
+        {value === 'custom' && (
+          <DatePicker
+            value={customDate}
+            onChange={onCustomDateChange}
+            placeholder="Start date"
+            size="small"
+            disabledDate={(current) => current && current > new Date()}
+          />
+        )}
+      </div>
+    );
+  };
 
-  const chartOptions = {
+  // Cumulative Working Chart Data based on selected time range
+  const cumulativeChartData = useMemo(() => {
+    // Filter series based on selected date range
+    const allCounts = statsData?.dashboardStats?.dailyClockInCounts || [];
+    const allHours = statsData?.dashboardStats?.dailyTotalHours || [];
+    
+    // Improved date comparison for filtering
+    const filteredCounts = allCounts.filter(item => {
+      const itemDate = new Date(item.date);
+      // Set time to noon to avoid timezone issues
+      itemDate.setHours(12, 0, 0, 0);
+      return itemDate >= mainDateRange.start && itemDate <= mainDateRange.end;
+    });
+    
+    const filteredHours = allHours.filter(item => {
+      const itemDate = new Date(item.date);
+      // Set time to noon to avoid timezone issues
+      itemDate.setHours(12, 0, 0, 0);
+      return itemDate >= mainDateRange.start && itemDate <= mainDateRange.end;
+    });
+
+    // Sort by date to ensure proper cumulative calculation
+    const rows = (metric === 'entries' ? filteredCounts : filteredHours)
+      .slice()
+      .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+    let cum = 0;
+    const labels = rows.map(r => new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+    const values = rows.map(r => {
+      if (metric === 'entries') {
+        cum += (r.count || 0);
+      } else {
+        cum += (r.hours || 0);
+      }
+      return cum;
+    });
+
+    return {
+      labels,
+      datasets: [{
+        label: metric === 'entries' ? 'Cumulative Entries' : 'Cumulative Hours',
+        data: values,
+        borderColor: theme.primary,
+        backgroundColor: 'rgba(67, 97, 238, 0.15)',
+        fill: true,
+        tension: 0.35,
+      }]
+    };
+  }, [statsData, mainDateRange, metric]);
+
+  const chartOptions = useMemo(() => ({
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
@@ -173,7 +331,12 @@ export default function AdminDashboard() {
         bodyFont: { size: 13 },
         padding: 12,
         usePointStyle: true,
-        callbacks: { label: (context) => `${context.parsed.y} check-ins` }
+        callbacks: { 
+          label: (context) => {
+            const v = Number(context.parsed.y ?? 0);
+            return metric === 'entries' ? `${v} entries` : `${v.toFixed(2)} hours`;
+          }
+        }
       }
     },
     scales: {
@@ -190,6 +353,62 @@ export default function AdminDashboard() {
         beginAtZero: true
       }
     }
+  }), [metric]);
+
+  
+
+  // Form submit handler (create/update location)
+  const onFinish = (values) => {
+    const vars = {
+      id: editLocId || undefined,
+      name: values.name,
+      latitude: typeof values.latitude === 'number' ? values.latitude : Number(values.latitude),
+      longitude: typeof values.longitude === 'number' ? values.longitude : Number(values.longitude),
+      radiusKm: typeof values.radiusKm === 'number' ? values.radiusKm : Number(values.radiusKm),
+      // New locations are not active by default; editing preserves current active state if editing an active one
+      active: editLocId ? !!locData?.locations?.find(l => l.id === editLocId)?.active : false,
+    };
+    upsertLocation({ variables: vars });
+  };
+
+  // Keep form fields in sync once activeLoc loads
+  useEffect(() => {
+    if (editLocId) {
+      const toEdit = locData?.locations?.find(l => l.id === editLocId);
+      if (toEdit) {
+        form.setFieldsValue({
+          name: toEdit.name,
+          radiusKm: toEdit.radiusKm,
+          latitude: toEdit.latitude,
+          longitude: toEdit.longitude,
+        });
+      }
+    } else {
+      form.resetFields();
+    }
+  }, [editLocId, locData, form]);
+
+  // Locate current browser position and fill form
+  const handleLocateCurrent = () => {
+    if (!('geolocation' in navigator)) {
+      message.error('Geolocation is not supported by this browser.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        form.setFieldsValue({ latitude: lat, longitude: lng });
+        message.success('Current location captured');
+        setLocating(false);
+      },
+      (err) => {
+        message.error(err?.message || 'Failed to get current location');
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // Table columns
@@ -201,9 +420,9 @@ export default function AdminDashboard() {
       render: (_, record) => (
         <div className="flex items-center gap-3">
           <Avatar size="small" className="bg-blue-100 text-blue-600">
-            {record.user?.name?.[0]?.toUpperCase() || 'U'}
+            {record.user?.name?.[0]?.toUpperCase() || record.userId?.[0]?.toUpperCase() || 'U'}
           </Avatar>
-          <span className="font-medium">{record.user?.name || 'Unknown User'}</span>
+          <span className="font-medium">{record.user?.name || record.user?.email?.split('@')[0] || 'Unknown User'}</span>
         </div>
       )
     },
@@ -252,7 +471,7 @@ export default function AdminDashboard() {
             {text?.[0]?.toUpperCase() || record.email?.[0]?.toUpperCase() || 'U'}
           </Avatar>
           <div>
-            <div className="font-medium">{text || 'No Name'}</div>
+            <div className="font-medium">{text || record.email?.split('@')[0] || 'Unknown'}</div>
             <div className="text-xs text-gray-500">{record.email}</div>
           </div>
         </div>
@@ -272,6 +491,7 @@ export default function AdminDashboard() {
       title: 'Status', 
       key: 'status',
       render: (_, record) => {
+        // Fix: Check if user is currently clocked in
         const isClockedIn = clockedData?.currentlyClockedIn?.some(c => c.userId === record.id);
         return (
           <Tag color={isClockedIn ? 'green' : 'default'} className="m-0">
@@ -286,6 +506,11 @@ export default function AdminDashboard() {
       width: 120,
       render: (_, record) => (
         <Space size="small">
+          <Tooltip title="View Analytics">
+            <Link href={`/admin/users/${record.id}`}>
+              <Button type="primary" size="small">View Analytics</Button>
+            </Link>
+          </Tooltip>
           <Tooltip title={record.role === 'ADMIN' ? 'Make Worker' : 'Make Admin'}>
             <Button 
               type="text"
@@ -332,7 +557,7 @@ export default function AdminDashboard() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-500 mt-1">Welcome back! Here's what's happening today.</p>
+          <p className="text-gray-500 mt-1">Welcome back! Here&apos;s what&apos;s happening today.</p>
         </div>
 
         {/* Stats Grid */}
@@ -347,8 +572,8 @@ export default function AdminDashboard() {
             loading={loadingClockedIn}
           />
           <StatCard 
-            title="Total Care Workers"
-            value={careWorkers.length}
+            title="Total Workers"
+            value={workersCount}
             icon={<UserAddOutlined />}
             color="green"
             trend={5}
@@ -356,40 +581,61 @@ export default function AdminDashboard() {
             loading={loadingUsers}
           />
           <StatCard 
-            title="Active Location"
-            value={activeLoc?.name ? '1' : '0'}
-            icon={<EnvironmentOutlined />}
-            color="purple"
-            loading={loadingLocations}
-          />
-          <StatCard 
             title="Admin Users"
-            value={admins.length}
+            value={adminsCount}
             icon={<UserSwitchOutlined />}
             color="yellow"
+            loading={loadingUsers}
+          />
+          <StatCard 
+            title="Total Users"
+            value={totalUsers}
+            icon={<UserAddOutlined />}
+            color="purple"
             loading={loadingUsers}
           />
         </div>
 
         {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          {/* Activity Chart */}
+          {/* Cumulative Working Chart */}
           <div className="lg:col-span-2">
             <StyledCard 
               title={
                 <div className="flex items-center justify-between w-full">
                   <div className="flex items-center gap-2">
                     <BarChartOutlined className="text-blue-500" />
-                    <span>Weekly Activity</span>
+                    <span>Cumulative Working</span>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <Tag color="blue" className="m-0">This Week</Tag>
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center bg-gray-100 rounded-md p-0.5">
+                      <button
+                        onClick={() => setMetric('entries')}
+                        className={`px-2 py-1 text-xs rounded ${metric === 'entries' ? 'bg-white shadow text-gray-800' : 'text-gray-600'}`}
+                      >Entries</button>
+                      <button
+                        onClick={() => setMetric('hours')}
+                        className={`px-2 py-1 text-xs rounded ${metric === 'hours' ? 'bg-white shadow text-gray-800' : 'text-gray-600'}`}
+                      >Hours</button>
+                    </div>
+                    <TimeRangeSelector 
+                      value={timeRange}
+                      onChange={setTimeRange}
+                      customDate={customStartDate}
+                      onCustomDateChange={setCustomStartDate}
+                    />
                   </div>
                 </div>
               }
             >
               <div className="h-64">
-                <Line data={chartData} options={chartOptions} />
+                {cumulativeChartData?.labels?.length ? (
+                  <Line data={cumulativeChartData} options={chartOptions} />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-gray-500">
+                    No data in the selected range
+                  </div>
+                )}
               </div>
             </StyledCard>
           </div>
@@ -415,8 +661,8 @@ export default function AdminDashboard() {
                 ) : (
                   <Table 
                     size="small"
-                    rowKey="id"
-                    dataSource={clockedData?.currentlyClockedIn || []}
+                    rowKey="userId"
+                    dataSource={uniqueClockedIn}
                     columns={columnsClocked}
                     pagination={false}
                     loading={loadingClockedIn}
@@ -447,7 +693,8 @@ export default function AdminDashboard() {
                     placeholder="Search team members..." 
                     className="w-64"
                     size="middle"
-                    // Add search functionality here
+                    onSearch={(val) => refetchUsers({ search: val })}
+                    onChange={(e) => refetchUsers({ search: e.target.value })}
                   />
                 </div>
               </div>
@@ -464,17 +711,30 @@ export default function AdminDashboard() {
                 showTotal: (total) => `Total ${total} members`
               }}
               className="border-0"
+              
             />
           </StyledCard>
         </div>
 
-        {/* Location Settings */}
-        <div className="mb-8">
-          <StyledCard
+      
+
+      {/* Location Settings */}
+      <div className="mb-8">
+        <StyledCard
             title={
-              <div className="flex items-center gap-2">
-                <EnvironmentOutlined className="text-blue-500" />
-                <span>Location Settings</span>
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-2">
+                  <EnvironmentOutlined className="text-blue-500" />
+                  <span>Location Settings</span>
+                </div>
+                <Button 
+                  size="middle" 
+                  icon={<AimOutlined />} 
+                  onClick={handleLocateCurrent}
+                  loading={locating}
+                >
+                  Use current location
+                </Button>
               </div>
             }
           >
@@ -482,7 +742,7 @@ export default function AdminDashboard() {
               form={form} 
               layout="vertical" 
               onFinish={onFinish} 
-              initialValues={activeLoc || { radiusKm: 0.25 }}
+              initialValues={{ radiusKm: 0.25 }}
               className="max-w-2xl"
             >
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -559,28 +819,93 @@ export default function AdminDashboard() {
                   loading={savingLoc}
                   className="min-w-[180px]"
                 >
-                  {activeLoc ? 'Update Location' : 'Save Location'}
+                  {editLocId ? 'Update Location' : 'Save Location'}
                 </Button>
                 
-                {activeLoc && (
+                {editLocId && (
                   <Button 
-                    loading={settingActive} 
                     size="large"
-                    onClick={() => setActiveLocation({ variables: { id: activeLoc.id } })}
+                    onClick={() => { setEditLocId(null); form.resetFields(); }}
                   >
-                    Re-activate Current
+                    Cancel Edit
                   </Button>
                 )}
-                
-                <div className="ml-auto text-sm text-gray-500">
-                  {activeLoc ? (
-                    <span>Last updated: {new Date(activeLoc.updatedAt).toLocaleString()}</span>
-                  ) : (
-                    <span>No active location set</span>
-                  )}
-                </div>
               </div>
             </Form>
+
+            {/* Locations List */}
+            <div className="mt-8">
+              <h3 className="text-base font-medium text-gray-800 mb-3">Saved Locations</h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-2 pr-4">Name</th>
+                      <th className="py-2 pr-4">Radius (km)</th>
+                      <th className="py-2 pr-4">Latitude</th>
+                      <th className="py-2 pr-4">Longitude</th>
+                      <th className="py-2 pr-4">Status</th>
+                      <th className="py-2 pr-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(locData?.locations || []).map((loc) => (
+                      <tr key={loc.id} className="border-b last:border-0">
+                        <td className="py-2 pr-4 font-medium text-gray-800">{loc.name}</td>
+                        <td className="py-2 pr-4">{loc.radiusKm}</td>
+                        <td className="py-2 pr-4">{loc.latitude}</td>
+                        <td className="py-2 pr-4">{loc.longitude}</td>
+                        <td className="py-2 pr-4">
+                          {loc.active ? (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700 border border-green-100">Active</span>
+                          ) : (
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-50 text-gray-600 border border-gray-100">Inactive</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center justify-end gap-2">
+                            {!loc.active && (
+                              <button
+                                className="px-3 py-1.5 text-xs rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                                disabled={settingActive}
+                                onClick={() => setActiveLocation({ variables: { id: loc.id } })}
+                                title="Set Active"
+                              >
+                                Set Active
+                              </button>
+                            )}
+                            <button
+                              className="px-3 py-1.5 text-xs rounded-md bg-gray-100 text-gray-800 hover:bg-gray-200"
+                              onClick={() => setEditLocId(loc.id)}
+                              title="Edit"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="px-3 py-1.5 text-xs rounded-md bg-red-600 text-white hover:bg-red-700"
+                              disabled={deletingLoc}
+                              onClick={() => {
+                                if (window.confirm(`Delete location "${loc.name}"?`)) {
+                                  deleteLocation({ variables: { id: loc.id } });
+                                }
+                              }}
+                              title="Delete"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                    {(!locData?.locations || locData.locations.length === 0) && (
+                      <tr>
+                        <td className="py-4 text-center text-gray-500" colSpan={6}>No locations saved yet</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </StyledCard>
         </div>
       </div>

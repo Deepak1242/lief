@@ -1,12 +1,12 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useUser } from '@auth0/nextjs-auth0/client';
 import { useRouter } from 'next/navigation';
 import { Spin, Alert } from 'antd';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function PostLogin() {
-  const { user, error, isLoading } = useUser();
+  const { sessionUser: user, dbUser, isLoading, error, isAdmin, isWorker } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -22,21 +22,23 @@ export default function PostLogin() {
 
     // If no user but also no error, redirect to login
     if (!user) {
-      router.replace('/api/auth/login');
+      router.replace('/api/auth/signin');
       return;
     }
 
-    // Get user roles from Auth0 token
-    const roles = user['https://liefclock.com/roles'] || [];
+    // Wait for database user to be loaded
+    if (!dbUser) return;
     
-    // Redirect based on role
-    if (roles.includes('ADMIN')) {
+    // Redirect based on role from database
+    if (isAdmin) {
       router.replace('/admin');
+    } else if (isWorker) {
+      router.replace('/worker');
     } else {
-      // Default to worker dashboard for all other roles
+      // Fallback to worker dashboard for any other role
       router.replace('/worker');
     }
-  }, [user, error, isLoading, router]);
+  }, [user, dbUser, isLoading, error, isAdmin, isWorker, router]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">

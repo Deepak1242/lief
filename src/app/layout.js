@@ -18,7 +18,11 @@ export const metadata = {
   title: "Lief Clock",
   description: "Healthcare worker attendance",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/icons/icon-192.png",
+  },
 };
+
 
 export default function RootLayout({ children }) {
   return (

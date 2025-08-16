@@ -1,13 +1,15 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { useUser } from "@auth0/nextjs-auth0/client";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { usePathname } from 'next/navigation';
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [userOpen, setUserOpen] = useState(false);
-  const { user, isLoading } = useUser();
+  const { data: session, status } = useSession();
+  const user = session?.user;
+  const isLoading = status === "loading";
   const pathname = usePathname();
   const userMenuRef = useRef(null);
 
@@ -93,37 +95,35 @@ export default function Navbar() {
                 tabIndex="-1"
               >
                 <div className="py-1">
-                  <Link 
-                    href="/api/auth/logout?returnTo=/"
-                    onClick={(e) => {
-                      e.preventDefault();
+                  <button 
+                    onClick={() => {
                       // Clear any local state if needed
                       localStorage.clear();
-                      // Redirect to logout endpoint which will handle the auth0 logout
-                      window.location.href = '/api/auth/logout?returnTo=/';
+                      // Use NextAuth signOut
+                      signOut({ callbackUrl: '/' });
                     }}
-                    className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
                     role="menuitem"
                     tabIndex="-1"
                   >
-                    Sign out
-                  </Link>
+                    Log out
+                  </button>
                 </div>
               </div>
             </div>
           ) : (
             <>
-              <Link 
-                href="/api/auth/login?returnTo=/post-login" 
+              <button 
+                onClick={() => signIn(null, { callbackUrl: '/post-login' })} 
                 className="!text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/20 transition-colors duration-200 border border-white"
               >
                 Log in
-              </Link>
+              </button>
               <Link 
-                href="/api/auth/login?screen_hint=signup&returnTo=/post-login" 
+                href="/register" 
                 className="!text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/20 transition-colors duration-200 border border-white"
               >
-                Sign up
+                Register
               </Link>
             </>
           )}
@@ -159,36 +159,36 @@ export default function Navbar() {
       >
         {user ? (
           <div className="flex flex-col space-y-2">
-            <Link 
-              href="/api/auth/logout?returnTo=/"
-              onClick={(e) => {
-                e.preventDefault();
+            <button 
+              onClick={() => {
                 setOpen(false);
                 // Clear any local state if needed
                 localStorage.clear();
-                // Redirect to logout endpoint which will handle the auth0 logout
-                window.location.href = '/api/auth/logout?returnTo=/';
+                // Use NextAuth signOut
+                signOut({ callbackUrl: '/' });
               }}
               className="inline-flex w-full items-center justify-center rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors duration-200"
             >
-              Sign out
-            </Link>
+              Log out
+            </button>
           </div>
         ) : (
           <div className="flex flex-col space-y-2">
-            <Link 
-              href="/api/auth/login?returnTo=/post-login" 
+            <button 
+              onClick={() => {
+                setOpen(false);
+                signIn(null, { callbackUrl: '/post-login' });
+              }} 
               className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
-              onClick={() => setOpen(false)}
             >
               Log in
-            </Link>
+            </button>
             <Link 
-              href="/api/auth/login?screen_hint=signup&returnTo=/post-login" 
+              href="/register" 
               className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
               onClick={() => setOpen(false)}
             >
-              Sign up
+              Register
             </Link>
           </div>
         )}

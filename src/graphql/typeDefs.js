@@ -10,7 +10,6 @@ export const typeDefs = gql`
 
   type User {
     id: ID!
-    auth0Id: String!
     email: String!
     name: String
     role: Role!
@@ -62,10 +61,12 @@ export const typeDefs = gql`
     avgHoursPerDayAll: Float!
     dailyClockInCounts: [DailyCount!]!
     weeklyHoursPerStaff: [StaffHours!]!
+    dailyTotalHours: [DailyHours!]!
   }
 
   type DailyCount { date: String!, count: Int! }
   type StaffHours { userId: String!, hours: Float! }
+  type DailyHours { date: String!, hours: Float! }
 
   type Query {
     me: User
@@ -79,7 +80,7 @@ export const typeDefs = gql`
   }
 
   type Mutation {
-    createUser(auth0Id: String!, email: String!, name: String, role: Role!): User!
+    createUser(email: String!, name: String, role: Role!): User!
     deleteUser(id: ID!): Boolean!
     upsertLocation(id: ID, name: String, latitude: Float!, longitude: Float!, radiusKm: Float!, active: Boolean!): Location!
     setActiveLocation(id: ID!): Location!

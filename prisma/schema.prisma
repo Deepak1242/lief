@@ -1,6 +1,3 @@
-// Prisma schema for healthcare worker attendance app
-// Database: PostgreSQL
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -10,69 +7,102 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Roles for access control
-enum Role {
-  ADMIN
-  CAREWORKER
-}
-
 model User {
-  id        String   @id @default(cuid())
-  auth0Id   String   @unique
-  email     String   @unique
-  name      String?
-  role      Role
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  shifts    Shift[]
-  analytics Analytics[]
+  id            String      @id @default(cuid())
+  email         String      @unique
+  name          String?
+  role          Role        @default(CAREWORKER)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  emailVerified DateTime?
+  image         String?
+  Account       Account[]
+  analytics     Analytics[]
+  Session       Session[]
+  shifts        Shift[]
 
   @@index([role])
 }
 
 model Shift {
-  id                String   @id @default(cuid())
-  userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  clockInAt         DateTime
-  clockInLat        Float
-  clockInLng        Float
-  clockInNote       String?
-  clockOutAt        DateTime?
-  clockOutLat       Float?
-  clockOutLng       Float?
-  clockOutNote      String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id           String    @id @default(cuid())
+  userId       String
+  clockInAt    DateTime
+  clockInLat   Float
+  clockInLng   Float
+  clockInNote  String?
+  clockOutAt   DateTime?
+  clockOutLat  Float?
+  clockOutLng  Float?
+  clockOutNote String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, clockInAt])
   @@index([clockOutAt])
 }
 
-// Location perimeter for geofencing (admin-configured)
 model Location {
   id        String   @id @default(cuid())
   name      String?
   latitude  Float
   longitude Float
-  radiusKm  Float     // geofence radius in kilometers
+  radiusKm  Float
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-// Daily aggregated analytics per user (can be recomputed)
 model Analytics {
-  id           String   @id @default(cuid())
-  userId       String
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  date         DateTime // UTC date representing the day
-  totalHours   Float    @default(0)
-  shiftCount   Int      @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id         String   @id @default(cuid())
+  userId     String
+  date       DateTime
+  totalHours Float    @default(0)
+  shiftCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, date])
   @@index([date])
+}
+
+model Account {
+  id                String  @id
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+  User              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  User         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+enum Role {
+  ADMIN
+  CAREWORKER
 }

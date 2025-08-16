@@ -11,7 +11,7 @@ export default function AuthErrorPage() {
   // Common error messages
   const errorMessages = {
     'access_denied': 'You do not have permission to access this page.',
-    'login_required': 'Please sign in to continue.',
+    'login_required': 'Please log in to continue.',
     'unauthorized': 'You are not authorized to view this content.',
     'configuration_error': 'There was a problem with the authentication configuration.',
     'invalid_request': 'The request was invalid. Please try again.',
@@ -53,7 +53,7 @@ export default function AuthErrorPage() {
             </h3>
             <div className="mt-6">
               <Link
-                href="/api/auth/login"
+                href="/api/auth/signin"
                 className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
               >
                 Back to Login

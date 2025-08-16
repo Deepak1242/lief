@@ -7,28 +7,50 @@ import { Button, Form, Input, Divider, message } from 'antd';
 import { GoogleOutlined, MailOutlined, LockOutlined, UserOutlined } from '@ant-design/icons';
 import { signIn } from 'next-auth/react';
 
-export default function LoginPage() {
+export default function RegisterPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (values) => {
     setLoading(true);
     try {
-      const result = await signIn('credentials', {
+      // Register the user via API
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          username: values.username,
+          email: values.email,
+          password: values.password,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Registration failed');
+      }
+
+      message.success('Registration successful! Signing you in...');
+      
+      // Sign in the user after successful registration
+      const signInResult = await signIn('credentials', {
         redirect: false,
         email: values.email,
         password: values.password,
       });
 
-      if (result.error) {
-        message.error(result.error);
+      if (signInResult.error) {
+        message.error('Registration successful but sign-in failed. Please try logging in.');
+        router.push('/login');
       } else {
-        message.success('Login successful!');
         router.push('/post-login');
       }
     } catch (error) {
-      console.error('Login error:', error);
-      message.error('An error occurred during login');
+      console.error('Registration error:', error);
+      message.error(error.message || 'An error occurred during registration');
     } finally {
       setLoading(false);
     }
@@ -42,12 +64,12 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Log in to your account
+          Create a new account
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600">
           Or{' '}
-          <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-            create a new account
+          <Link href="/login" className="font-medium text-blue-600 hover:text-blue-500">
+            log in to your existing account
           </Link>
         </p>
       </div>
@@ -55,11 +77,22 @@ export default function LoginPage() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <Form
-            name="login"
+            name="register"
             initialValues={{ remember: true }}
             onFinish={handleSubmit}
             layout="vertical"
           >
+            <Form.Item
+              name="username"
+              rules={[{ required: true, message: 'Please input your username!' }]}
+            >
+              <Input 
+                prefix={<UserOutlined className="site-form-item-icon" />} 
+                placeholder="Username" 
+                size="large"
+              />
+            </Form.Item>
+
             <Form.Item
               name="email"
               rules={[
@@ -76,11 +109,36 @@ export default function LoginPage() {
 
             <Form.Item
               name="password"
-              rules={[{ required: true, message: 'Please input your password!' }]}
+              rules={[
+                { required: true, message: 'Please input your password!' },
+                { min: 8, message: 'Password must be at least 8 characters!' }
+              ]}
             >
               <Input.Password 
                 prefix={<LockOutlined className="site-form-item-icon" />} 
                 placeholder="Password" 
+                size="large"
+              />
+            </Form.Item>
+
+            <Form.Item
+              name="confirmPassword"
+              dependencies={['password']}
+              rules={[
+                { required: true, message: 'Please confirm your password!' },
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (!value || getFieldValue('password') === value) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(new Error('The two passwords do not match!'));
+                  },
+                }),
+              ]}
+            >
+              <Input.Password 
+                prefix={<LockOutlined className="site-form-item-icon" />} 
+                placeholder="Confirm Password" 
                 size="large"
               />
             </Form.Item>
@@ -93,7 +151,7 @@ export default function LoginPage() {
                 size="large"
                 loading={loading}
               >
-                Log in
+                Register
               </Button>
             </Form.Item>
           </Form>
