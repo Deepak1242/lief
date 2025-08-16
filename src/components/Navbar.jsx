@@ -131,7 +131,7 @@ export default function Navbar() {
 
         <button
           onClick={() => setOpen(!open)}
-          className="inline-flex items-center justify-center rounded-md p-2 text-gray-700 ring-1 ring-gray-200 transition-colors hover:bg-gray-50 md:hidden"
+          className="inline-flex items-center justify-center rounded-md p-2 text-white border-2 border-white transition-colors hover:bg-white/20 md:hidden"
           aria-label="Toggle menu"
           aria-expanded={open}
         >
@@ -153,7 +153,7 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       <div 
-        className={`border-t border-gray-200/70 bg-white/95 px-4 py-3 transition-all duration-200 md:hidden ${open ? 'block' : 'hidden'}`}
+        className={`border-t border-blue-300/40 bg-blue-600/95 px-4 py-3 text-white transition-all duration-200 md:hidden ${open ? 'block' : 'hidden'}`}
         role="dialog"
         aria-modal="true"
       >
@@ -167,7 +167,7 @@ export default function Navbar() {
                 // Use NextAuth signOut
                 signOut({ callbackUrl: '/' });
               }}
-              className="inline-flex w-full items-center justify-center rounded-lg bg-white/10 px-4 py-2 text-sm font-semibold text-white hover:bg-white/20 transition-colors duration-200"
+              className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
             >
               Log out
             </button>

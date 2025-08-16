@@ -16,7 +16,7 @@ export default function AdminPage() {
   
   if (isLoading) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent flex items-center justify-center">
         <Spin size="large" />
       </div>
     );
@@ -24,7 +24,7 @@ export default function AdminPage() {
 
   if (error) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent flex items-center justify-center">
         <Alert 
           type="error" 
           message="Authentication Error" 
@@ -39,7 +39,7 @@ export default function AdminPage() {
   // Check if user is authenticated (need at least dbUser from GraphQL)
   if (!dbUser) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent flex items-center justify-center">
         <Alert 
           type="warning" 
           message="Access Denied" 
@@ -54,7 +54,7 @@ export default function AdminPage() {
   // Check if user has admin role
   if (!isAdmin) {
     return (
-      <div className="flex h-screen items-center justify-center">
+      <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent flex items-center justify-center">
         <Alert 
           type="warning" 
           message="Access Denied" 

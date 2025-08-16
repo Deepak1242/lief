@@ -235,6 +235,12 @@ export const resolvers = {
       await prisma.location.updateMany({ data: { active: false }, where: {} })
       return prisma.location.update({ where: { id }, data: { active: true } })
     },
+    deleteLocation: async (_p, { id }, { req, res }) => {
+      const me = await getCurrentUser(req, res)
+      requireAdmin(me)
+      await prisma.location.delete({ where: { id } })
+      return true
+    },
     promoteUser: async (_p, { id, role }, { req, res }) => {
       const me = await getCurrentUser(req, res)
       requireAdmin(me)

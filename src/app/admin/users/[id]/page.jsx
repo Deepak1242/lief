@@ -258,7 +258,7 @@ export default function UserAnalyticsPage() {
   }, [processedAnalytics, daysWithData]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-b from-blue-200 via-blue-100 to-transparent">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>

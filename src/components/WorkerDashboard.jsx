@@ -1,7 +1,7 @@
 "use client";
 import React, { useCallback, useEffect, useMemo, useRef, useState, isValidElement, cloneElement } from "react";
 import { useMutation, useQuery } from "@apollo/client";
-import { ANALYTICS_ME, CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
+import { CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -185,7 +185,7 @@ const LocationStatusCard = ({ inside }) => (
 
 // Stats grid wrapper
 const StatsGrid = ({ children }) => (
-  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">{children}</div>
+  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">{children}</div>
 );
 
 // Enhanced Time Clock section
@@ -570,13 +570,7 @@ export default function WorkerDashboard() {
     return { start, end };
   }, []);
   const dateRange = useMemo(() => getDateRange(range, customStart), [range, customStart, getDateRange]);
-  const { data: analyticsData, loading: analyticsLoading, refetch: refetchAnalytics } = useQuery(
-    ANALYTICS_ME,
-    {
-      variables: { from: dateRange.start, to: dateRange.end },
-      fetchPolicy: 'cache-and-network',
-    }
-  );
+  // Analytics are computed from shifts for accuracy and immediate updates
 
   // Simple notify helper (replace antd message)
   const notify = useCallback((type, text) => {
@@ -589,7 +583,6 @@ export default function WorkerDashboard() {
     onCompleted: () => { 
       notify('success', 'Successfully clocked in');
       refetchShifts(); 
-      refetchAnalytics(); 
     },
     onError: (err) => {
       console.error("Clock in error:", err);
@@ -602,7 +595,6 @@ export default function WorkerDashboard() {
     onCompleted: () => { 
       notify('success', 'Successfully clocked out');
       refetchShifts(); 
-      refetchAnalytics(); 
     },
     onError: (err) => {
       console.error("Clock out error:", err);
@@ -614,7 +606,7 @@ export default function WorkerDashboard() {
   const activeLoc = useMemo(() => (locData?.locations?.[0]) || null, [locData]);
   const openShift = useMemo(() => (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null, [shiftsData]);
   const recentShifts = useMemo(() => (shiftsData?.shifts || []).slice(0, 10), [shiftsData]);
-  const loading = meLoading || locLoading || shiftsLoading || analyticsLoading;
+  const loading = meLoading || locLoading || shiftsLoading;
   const [metric, setMetric] = useState('hours'); // 'hours' | 'entries'
 
   // Location tracking state
@@ -719,39 +711,42 @@ export default function WorkerDashboard() {
     }
   }, [pos, activeLoc, openShift, clockIn, clockOut]);
 
-  // Helper to generate date range with zero-filled data
-  const getDateRangeWithData = (start, end, data) => {
-    // Create a map of dates to their data for quick lookup
+  // Calculate hours for a shift (exclude ongoing)
+  const calculateShiftHours = (shift) => {
+    if (!shift?.clockOutAt) return 0;
+    const startDt = new Date(shift.clockInAt);
+    const endDt = new Date(shift.clockOutAt);
+    return Math.max(0, (endDt - startDt) / 3600000); // hours
+  };
+
+  // Generate date range with data calculated from actual shifts
+  const getDateRangeWithShiftData = (start, end, shifts) => {
     const dateMap = new Map();
-    (data || []).forEach(item => {
-      // Normalize date to YYYY-MM-DD format for consistent comparison
-      const itemDate = new Date(item.date);
-      const dateKey = itemDate.toISOString().split('T')[0];
-      dateMap.set(dateKey, {
-        hours: item.totalHours || 0,
-        count: item.shiftCount || 0
-      });
+    (shifts || []).forEach(shift => {
+      if (!shift.clockOutAt) return; // Skip ongoing shifts
+      const shiftDate = new Date(shift.clockInAt);
+      const dateKey = shiftDate.toISOString().split('T')[0];
+      if (!dateMap.has(dateKey)) {
+        dateMap.set(dateKey, { hours: 0, count: 0 });
+      }
+      const dayData = dateMap.get(dateKey);
+      dayData.hours += calculateShiftHours(shift);
+      dayData.count += 1;
     });
 
-    // Create array with all dates in range, zero-filled where no data exists
     const result = [];
     const current = new Date(start);
-    // Ensure we start at beginning of day
     current.setHours(0, 0, 0, 0);
     const endDate = new Date(end);
-    // Ensure we include the entire end day
     endDate.setHours(23, 59, 59, 999);
 
-    // Loop through each day in the range
     while (current <= endDate) {
       const dateKey = current.toISOString().split('T')[0];
-      const dayData = dateMap.get(dateKey) || { hours: 0, count: 0 };
-      // Create a new date object to avoid reference issues
+      const data = dateMap.get(dateKey) || { hours: 0, count: 0 };
       result.push({
         date: new Date(current),
-        ...dayData
+        ...data
       });
-      // Move to next day
       current.setDate(current.getDate() + 1);
     }
     return result;
@@ -759,16 +754,25 @@ export default function WorkerDashboard() {
 
   // Process analytics data with zero-fill and proper date handling
   const { processedAnalytics, daysWithData } = useMemo(() => {
-    if (!analyticsData?.analytics?.length) return { processedAnalytics: [], daysWithData: 0 };
-    
-    const data = getDateRangeWithData(dateRange.start, dateRange.end, analyticsData.analytics);
+    const shifts = shiftsData?.shifts || [];
+
+    const start = new Date(dateRange.start); start.setHours(0, 0, 0, 0);
+    const end = new Date(dateRange.end); end.setHours(23, 59, 59, 999);
+
+    const inRange = shifts.filter(s => {
+      const t = new Date(s.clockInAt).getTime();
+      return t >= start.getTime() && t <= end.getTime();
+    });
+
+    // Always build zero-filled series so the chart renders even with no shifts
+    const data = getDateRangeWithShiftData(start, end, inRange);
     const daysWithDataCount = data.filter(d => d.hours > 0).length;
     
     return {
       processedAnalytics: data,
       daysWithData: daysWithDataCount > 0 ? daysWithDataCount : 1 // Avoid division by zero
     };
-  }, [analyticsData, dateRange]);
+  }, [shiftsData, dateRange]);
 
   // Calculate all metrics in a single useMemo for consistency
   const { todayHours, periodHours, periodEntries, avgHours } = useMemo(() => {
@@ -878,7 +882,8 @@ export default function WorkerDashboard() {
           color: theme.textSecondary,
           callback: function(value) {
             if (metric === 'hours') {
-              return value % 1 === 0 ? `${value}h` : '';
+              const num = Number(value) || 0;
+              return num > 0 ? `${num.toFixed(1)}h` : '0h';
             }
             return value;
           }
@@ -1012,6 +1017,23 @@ export default function WorkerDashboard() {
                 value={openShift ? formatDuration(currentShiftDuration * 60) : "Ready"}
                 icon={<IconClock />}
                 color={openShift ? "blue" : "green"}
+              />
+            </div>
+            <div>
+              <StatCard
+                title="Total Hours (Range)"
+                value={formatDuration(periodHours * 60)}
+                icon={<IconClock />}
+                color="blue"
+              />
+            </div>
+            <div>
+              <StatCard
+                title="Total Shifts (Range)"
+                value={periodEntries}
+                suffix="shifts"
+                icon={<IconHistory />}
+                color="purple"
               />
             </div>
           </StatsGrid>
