@@ -49,36 +49,54 @@ export default function Navbar() {
   }
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-blue-200/70 bg-blue-600/80 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          <img 
-            src="/lief-high-resolution-logo-transparent.png" 
-            alt="Lief Clock Logo" 
-            className="h-9 w-auto"
-            width={100}
-            height={100}
-          />
-          <span className="text-4xl font-[900] text-white hidden sm:inline">Clock</span>
+    <header className="sticky top-0 z-50 w-full bg-gradient-to-r from-slate-900 via-blue-900 to-slate-900 backdrop-blur-xl border-b border-white/10 shadow-2xl">
+      <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-6 py-4 lg:px-8">
+        <Link href="/" className="group flex items-center gap-3 transition-transform hover:scale-105 duration-300">
+          <div className="relative">
+            <div className="absolute -inset-2 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full opacity-20 group-hover:opacity-40 blur transition-opacity duration-300"></div>
+            <img 
+              src="/lief-high-resolution-logo-transparent.png" 
+              alt="Lief Clock Logo" 
+              className="relative h-10 w-auto drop-shadow-lg"
+              width={100}
+              height={100}
+            />
+          </div>
+          <div className="hidden sm:block">
+            <span className="text-2xl font-bold bg-gradient-to-r from-white to-blue-200 bg-clip-text text-transparent">
+              Lief
+            </span>
+            <div className="text-xs text-blue-300 font-medium tracking-wider uppercase">
+              Time Management
+            </div>
+          </div>
         </Link>
 
-        <div className="hidden items-center gap-2 md:flex" ref={userMenuRef}>
+        <div className="hidden items-center gap-3 md:flex" ref={userMenuRef}>
           {user ? (
             <div className="relative">
               <button
                 onClick={() => setUserOpen(!userOpen)}
-                className="flex items-center gap-2 rounded-lg border-2 border-white bg-white/10 px-3 py-1.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500/80"
+                className="group flex items-center gap-3 rounded-xl bg-white/5 backdrop-blur-sm border border-white/20 px-4 py-2.5 text-sm font-medium text-white transition-all duration-300 hover:bg-white/10 hover:border-white/30 hover:shadow-lg hover:shadow-blue-500/25"
                 aria-expanded={userOpen}
                 aria-label="User menu"
               >
-                <span className="inline-grid h-7 w-7 place-items-center rounded-full bg-white text-xs font-bold text-blue-600">
-                  {(user.name || user.email || 'U').slice(0, 1).toUpperCase()}
-                </span>
-                <span className="max-w-[120px] truncate font-semibold">
-                  {user.name?.split(' ')[0] || user.email?.split('@')[0]}
-                </span>
+                <div className="relative">
+                  <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full opacity-60 group-hover:opacity-80 blur-sm transition-opacity duration-300"></div>
+                  <span className="relative inline-grid h-8 w-8 place-items-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-xs font-bold text-white shadow-lg">
+                    {(user.name || user.email || 'U').slice(0, 1).toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex flex-col items-start">
+                  <span className="max-w-[120px] truncate font-semibold text-white">
+                    {user.name?.split(' ')[0] || user.email?.split('@')[0]}
+                  </span>
+                  <span className="text-xs text-blue-200">
+                    {user.email?.split('@')[0]}
+                  </span>
+                </div>
                 <svg 
-                  className={`h-4 w-4 text-gray-500 transition-transform ${userOpen ? 'rotate-180' : ''}`} 
+                  className={`h-4 w-4 text-blue-200 transition-all duration-300 ${userOpen ? 'rotate-180 text-white' : 'group-hover:text-white'}`} 
                   fill="none" 
                   viewBox="0 0 24 24" 
                   stroke="currentColor"
@@ -88,25 +106,30 @@ export default function Navbar() {
               </button>
               
               <div 
-                className={`absolute right-0 mt-2 w-48 origin-top-right overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg transition-all duration-100 ${userOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0 pointer-events-none'}`}
+                className={`absolute right-0 mt-3 w-56 origin-top-right overflow-hidden rounded-xl bg-white/95 backdrop-blur-xl border border-white/20 shadow-2xl shadow-black/20 transition-all duration-300 ${userOpen ? 'scale-100 opacity-100 translate-y-0' : 'scale-95 opacity-0 -translate-y-2 pointer-events-none'}`}
                 role="menu"
                 aria-orientation="vertical"
                 aria-labelledby="user-menu-button"
                 tabIndex="-1"
               >
-                <div className="py-1">
+                <div className="p-2">
+                  <div className="px-3 py-2 border-b border-gray-100">
+                    <p className="text-sm font-semibold text-gray-900">{user.name || 'User'}</p>
+                    <p className="text-xs text-gray-500 truncate">{user.email}</p>
+                  </div>
                   <button 
                     onClick={() => {
-                      // Clear any local state if needed
                       localStorage.clear();
-                      // Use NextAuth signOut
                       signOut({ callbackUrl: '/' });
                     }}
-                    className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                    className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-gray-700 transition-all duration-200 hover:bg-red-50 hover:text-red-700 mt-1"
                     role="menuitem"
                     tabIndex="-1"
                   >
-                    Log out
+                    <svg className="h-4 w-4 text-gray-400 group-hover:text-red-500 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                    </svg>
+                    Sign out
                   </button>
                 </div>
               </div>
@@ -115,15 +138,17 @@ export default function Navbar() {
             <>
               <button 
                 onClick={() => signIn(null, { callbackUrl: '/post-login' })} 
-                className="!text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/20 transition-colors duration-200 border border-white"
+                className="group relative overflow-hidden rounded-xl bg-white/10 backdrop-blur-sm border border-white/30 px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:bg-white/20 hover:border-white/50 hover:shadow-lg hover:shadow-blue-500/25"
               >
-                Log in
+                <span className="relative z-10">Sign In</span>
+                <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </button>
               <Link 
                 href="/register" 
-                className="!text-white rounded-lg px-4 py-2 text-sm font-semibold hover:bg-white/20 transition-colors duration-200 border border-white"
+                className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-2.5 text-sm font-semibold text-white transition-all duration-300 hover:from-blue-600 hover:to-purple-700 hover:shadow-lg hover:shadow-blue-500/50 hover:scale-105"
               >
-                Register
+                <span className="relative text-white z-10">Get Started</span>
+                <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
               </Link>
             </>
           )}
@@ -131,12 +156,12 @@ export default function Navbar() {
 
         <button
           onClick={() => setOpen(!open)}
-          className="inline-flex items-center justify-center rounded-md p-2 text-white border-2 border-white transition-colors hover:bg-white/20 md:hidden"
+          className="group inline-flex items-center justify-center rounded-xl bg-white/10 backdrop-blur-sm border border-white/30 p-2.5 text-white transition-all duration-300 hover:bg-white/20 hover:border-white/50 hover:shadow-lg hover:shadow-blue-500/25 md:hidden"
           aria-label="Toggle menu"
           aria-expanded={open}
         >
           <svg 
-            className="h-5 w-5" 
+            className={`h-5 w-5 transition-all duration-300 ${open ? 'rotate-90' : 'group-hover:scale-110'}`} 
             fill="none" 
             viewBox="0 0 24 24" 
             stroke="currentColor"
@@ -153,42 +178,57 @@ export default function Navbar() {
 
       {/* Mobile menu */}
       <div 
-        className={`border-t border-blue-300/40 bg-blue-600/95 px-4 py-3 text-white transition-all duration-200 md:hidden ${open ? 'block' : 'hidden'}`}
+        className={`border-t border-white/10 bg-gradient-to-b from-slate-900/95 to-blue-900/95 backdrop-blur-xl px-6 py-6 text-white transition-all duration-300 md:hidden ${open ? 'block opacity-100' : 'hidden opacity-0'}`}
         role="dialog"
         aria-modal="true"
       >
         {user ? (
-          <div className="flex flex-col space-y-2">
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-white/5 border border-white/10">
+              <div className="relative">
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full opacity-60 blur-sm"></div>
+                <span className="relative inline-grid h-10 w-10 place-items-center rounded-full bg-gradient-to-r from-blue-500 to-purple-600 text-sm font-bold text-white shadow-lg">
+                  {(user.name || user.email || 'U').slice(0, 1).toUpperCase()}
+                </span>
+              </div>
+              <div className="flex flex-col">
+                <span className="font-semibold text-white">{user.name || 'User'}</span>
+                <span className="text-xs text-blue-200 truncate">{user.email}</span>
+              </div>
+            </div>
             <button 
               onClick={() => {
                 setOpen(false);
-                // Clear any local state if needed
                 localStorage.clear();
-                // Use NextAuth signOut
                 signOut({ callbackUrl: '/' });
               }}
-              className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
+              className="group flex w-full items-center justify-center gap-3 rounded-xl bg-red-500/10 border border-red-500/30 px-4 py-3 text-sm font-semibold text-red-300 transition-all duration-300 hover:bg-red-500/20 hover:border-red-500/50 hover:text-red-200"
             >
-              Log out
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
+              Sign Out
             </button>
           </div>
         ) : (
-          <div className="flex flex-col space-y-2">
+          <div className="flex flex-col space-y-4">
             <button 
               onClick={() => {
                 setOpen(false);
                 signIn(null, { callbackUrl: '/post-login' });
               }} 
-              className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
+              className="group relative overflow-hidden rounded-xl bg-white/10 backdrop-blur-sm border border-white/30 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:bg-white/20 hover:border-white/50"
             >
-              Log in
+              <span className="relative z-10">Sign In</span>
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 to-purple-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </button>
             <Link 
               href="/register" 
-              className="!text-white inline-flex w-full items-center justify-center rounded-lg border-2 border-white px-4 py-2 text-sm font-bold hover:bg-white/20 transition-colors duration-200"
+              className="group relative overflow-hidden rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-3 text-sm font-semibold text-white transition-all duration-300 hover:from-blue-600 hover:to-purple-700 hover:shadow-lg hover:shadow-blue-500/50"
               onClick={() => setOpen(false)}
             >
-              Register
+              <span className="relative z-10">Get Started</span>
+              <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
             </Link>
           </div>
         )}

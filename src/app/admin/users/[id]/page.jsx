@@ -72,17 +72,21 @@ export default function UserAnalyticsPage() {
     }
   }, [range, customStart]);
 
-  const { data: userData, loading: loadingUser } = useQuery(USER, { variables: { id: userId }, skip: !userId });
+  const { data: userData, loading: loadingUser } = useQuery(USER, { 
+    variables: { id: userId }, 
+    skip: !userId,
+    fetchPolicy: "cache-first" // User data is relatively static
+  });
   const { data: analyticsData, loading: loadingAnalytics, refetch: refetchAnalytics } = useQuery(ANALYTICS, {
     variables: { userId, from: dateRange.start, to: dateRange.end },
     skip: !userId,
-    fetchPolicy: "cache-and-network",
+    fetchPolicy: "cache-first", // Cache analytics data for better performance
     notifyOnNetworkStatusChange: true,
   });
   const { data: shiftsData, loading: loadingShifts, refetch: refetchShifts } = useQuery(SHIFTS_ADMIN, {
     variables: { userId, from: dateRange.start, to: dateRange.end },
     skip: !userId,
-    fetchPolicy: "cache-and-network",
+    fetchPolicy: "cache-first", // Cache shifts data for better performance
     notifyOnNetworkStatusChange: true,
   });
 

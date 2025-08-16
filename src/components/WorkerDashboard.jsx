@@ -2,6 +2,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, isValidElement, cloneElement } from "react";
 import { useMutation, useQuery } from "@apollo/client";
 import { CLOCK_IN, CLOCK_OUT, LIST_LOCATIONS, ME, MY_SHIFTS } from "@/graphql/operations";
+import { useOfflineClockIn } from '../hooks/useOfflineClockIn';
+import { useBackgroundSync } from '../hooks/useBackgroundSync';
+import BackgroundSettings from './BackgroundSettings';
 import { Line } from "react-chartjs-2";
 import {
   Chart as ChartJS,
@@ -197,20 +200,37 @@ const presetNotes = [
   'At client location'
 ];
 
-const TimeClockCard = ({
-  loading,
-  openShift,
-  pos,
+const ClockInOutCard = ({ 
+  openShift, 
+  pos, 
   geoLoading,
   manualNote,
   setManualNote,
   handleClockIn,
   handleClockOut,
   clockingIn,
-  clockingOut
+  clockingOut,
+  isOffline,
+  pendingSyncCount
 }) => (
   <StyledCard title="Time Clock" className="mb-10" loading={loading} gradient>
     <div className="space-y-4">
+      {/* Offline status indicator */}
+      {isOffline && (
+        <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
+          <div className="flex items-center gap-2 text-orange-700">
+            <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
+            <span className="font-medium">Working Offline</span>
+          </div>
+          {pendingSyncCount > 0 && (
+            <p className="text-sm text-orange-600 mt-1">
+              {pendingSyncCount} clock entries pending sync
+            </p>
+          )}
+        </div>
+      )}
       <div className="flex flex-col items-stretch gap-4">
         <div className="w-full">
           <input
@@ -308,9 +328,6 @@ const WorkLocationCard = ({ activeLoc }) => (
       <div className="flex items-center">
         <IconLocation className="w-5 h-5 mr-2 text-blue-500" />
         <span className="font-medium">{activeLoc.name}</span>
-      </div>
-      <div className="text-sm text-gray-600">
-        {activeLoc.address}
       </div>
       <div className="text-sm">
         <span className="text-gray-500">Radius: </span>
@@ -515,16 +532,18 @@ const formatDateTime = (dateString) => {
 
 export default function WorkerDashboard() {
   // User and location data
-  const { data: meData, loading: meLoading } = useQuery(ME);
+  const { data: meData, loading: meLoading } = useQuery(ME, {
+    fetchPolicy: "cache-first" // User data is relatively static
+  });
   const { data: locData, loading: locLoading } = useQuery(LIST_LOCATIONS, { 
     variables: { active: true }, 
-    fetchPolicy: "cache-and-network" 
+    fetchPolicy: "cache-first" // Locations are static data
   });
   
-  // Shift and analytics data with polling
+  // Shift and analytics data with optimized polling (60s instead of 15s)
   const { data: shiftsData, loading: shiftsLoading, refetch: refetchShifts } = useQuery(MY_SHIFTS, { 
-    fetchPolicy: "network-only", 
-    pollInterval: 15000 
+    fetchPolicy: "cache-and-network", 
+    pollInterval: 60000 
   });
   
   // Analytics range state and query
@@ -578,33 +597,52 @@ export default function WorkerDashboard() {
     fn(text);
   }, []);
 
-  // Clock in/out mutations with loading states
-  const [clockIn, { loading: clockingIn }] = useMutation(CLOCK_IN, { 
-    onCompleted: () => { 
-      notify('success', 'Successfully clocked in');
-      refetchShifts(); 
-    },
-    onError: (err) => {
-      console.error("Clock in error:", err);
-      const errorMessage = err?.message || 'An unknown error occurred';
-      notify('error', `Failed to clock in: ${errorMessage}`);
-    }
-  });
-  
-  const [clockOut, { loading: clockingOut }] = useMutation(CLOCK_OUT, { 
-    onCompleted: () => { 
-      notify('success', 'Successfully clocked out');
-      refetchShifts(); 
-    },
-    onError: (err) => {
-      console.error("Clock out error:", err);
-      notify('error', `Failed to clock out: ${err.message}`);
-    }
-  });
+  // Use offline clock in/out hook
+  const {
+    clockIn: handleClockIn,
+    clockOut: handleClockOut,
+    clockingIn,
+    clockingOut,
+    isOffline,
+    pendingSyncCount,
+    localOpenShift,
+  } = useOfflineClockIn();
 
-  // Derived state
+  // Use background sync hook
+  const {
+    isBackgroundEnabled,
+    backgroundStatus,
+    syncEvents,
+    enableBackgroundTracking,
+    disableBackgroundTracking,
+    triggerSync,
+    showNotification
+  } = useBackgroundSync();
+
+  // Enable background tracking when component mounts
+  useEffect(() => {
+    if (meData?.me && activeLoc && backgroundStatus.isInitialized) {
+      enableBackgroundTracking({
+        workLocation: {
+          latitude: activeLoc.latitude,
+          longitude: activeLoc.longitude,
+          radiusKm: activeLoc.radiusKm
+        },
+        hasOpenShift: !!openShift,
+        lastLocationStatus: pos && activeLoc ? 
+          (haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude) <= activeLoc.radiusKm + 0.05 ? 'inside' : 'outside') : 
+          'unknown'
+      });
+    }
+  }, [meData?.me, activeLoc, backgroundStatus.isInitialized, enableBackgroundTracking, openShift, pos]);
+
+  // Derived state - use local shift when offline
   const activeLoc = useMemo(() => (locData?.locations?.[0]) || null, [locData]);
-  const openShift = useMemo(() => (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null, [shiftsData]);
+  const openShift = useMemo(() => {
+    // Use local shift state when offline or when we have pending offline data
+    if (localOpenShift) return localOpenShift;
+    return (shiftsData?.shifts || []).find(s => !s.clockOutAt) || null;
+  }, [shiftsData, localOpenShift]);
   const recentShifts = useMemo(() => (shiftsData?.shifts || []).slice(0, 10), [shiftsData]);
   const loading = meLoading || locLoading || shiftsLoading;
   const [metric, setMetric] = useState('hours'); // 'hours' | 'entries'
@@ -683,33 +721,25 @@ export default function WorkerDashboard() {
     if (pos && activeLoc) {
       const distance = haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude);
       setDistanceFromWork(distance);
-      
-      // Auto clock in/out based on location
-      const inside = distance <= activeLoc.radiusKm + 0.05; // Small buffer
+    }
+  }, [pos, activeLoc]);
+
+  useEffect(() => {
+    if (pos && activeLoc) {
+      const distance = haversineKm(pos.lat, pos.lng, activeLoc.latitude, activeLoc.longitude);
+      const inside = distance <= activeLoc.radiusKm + 0.05; // 50m buffer
       const prev = lastStatusRef.current;
       lastStatusRef.current = inside ? "inside" : "outside";
 
       if (inside !== (prev === "inside")) {
         if (inside && !openShift) {
-          clockIn({ 
-            variables: { 
-              note: `Auto clock-in (${formatDistance(distance)} from work)`, 
-              lat: pos.lat, 
-              lng: pos.lng 
-            } 
-          });
+          handleClockIn({ variables: { note: `Auto clock-in (${formatDistance(distance)} from work)`, lat: pos.lat, lng: pos.lng } });
         } else if (!inside && openShift) {
-          clockOut({ 
-            variables: { 
-              note: `Auto clock-out (${formatDistance(distance)} from work)`, 
-              lat: pos.lat, 
-              lng: pos.lng 
-            } 
-          });
+          handleClockOut({ variables: { note: `Auto clock-out (${formatDistance(distance)} from work)`, lat: pos.lat, lng: pos.lng } });
         }
       }
     }
-  }, [pos, activeLoc, openShift, clockIn, clockOut]);
+  }, [pos, activeLoc, openShift, handleClockIn, handleClockOut]);
 
   // Calculate hours for a shift (exclude ongoing)
   const calculateShiftHours = (shift) => {
@@ -916,46 +946,6 @@ export default function WorkerDashboard() {
     return (now - start) / (1000 * 60 * 60); // in hours
   }, [openShift]);
 
-  // Handle clock in/out actions
-  const handleClockIn = useCallback(() => {
-    if (!pos) {
-      notify('info', 'Waiting for location...');
-      return;
-    }
-    if (openShift) {
-      notify('info', "You're already clocked in");
-      return;
-    }
-    clockIn({ 
-      variables: { 
-        note: manualNote || `Manual clock-in (${formatDistance(distanceFromWork)} from work)`, 
-        lat: pos.lat, 
-        lng: pos.lng, 
-        manualOverride: true 
-      } 
-    });
-    setManualNote("");
-  }, [pos, openShift, manualNote, clockIn, distanceFromWork, notify]);
-
-  const handleClockOut = useCallback(() => {
-    if (!pos) {
-      notify('info', 'Waiting for location...');
-      return;
-    }
-    if (!openShift) {
-      notify('info', 'No active shift to clock out from');
-      return;
-    }
-    clockOut({ 
-      variables: { 
-        note: manualNote || `Manual clock-out (${formatDistance(distanceFromWork)} from work)`, 
-        lat: pos.lat, 
-        lng: pos.lng, 
-        manualOverride: true 
-      } 
-    });
-    setManualNote("");
-  }, [pos, openShift, manualNote, clockOut, distanceFromWork, notify]);
 
   // Tailwind table renders shift history directly
 
@@ -1049,7 +1039,12 @@ export default function WorkerDashboard() {
             handleClockOut={handleClockOut}
             clockingIn={clockingIn}
             clockingOut={clockingOut}
+            isOffline={isOffline}
+            pendingSyncCount={pendingSyncCount}
           />
+
+          {/* Background Settings */}
+          <BackgroundSettings />
 
           {/* My Activity Chart */}
           <StyledCard 
