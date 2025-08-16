@@ -11,14 +11,16 @@ import {
 } from '../utils/offlineStorage';
 import { startAutoSync } from '../utils/syncManager';
 
-export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notify) => {
+import { CLOCK_IN, CLOCK_OUT } from '../graphql/operations';
+
+export const useOfflineClockIn = () => {
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [pendingSyncCount, setPendingSyncCount] = useState(0);
   const [localOpenShift, setLocalOpenShift] = useState(null);
 
   // Original mutations
-  const [originalClockIn, { loading: clockingIn }] = useMutation(clockInMutation);
-  const [originalClockOut, { loading: clockingOut }] = useMutation(clockOutMutation);
+  const [originalClockIn, { loading: clockingIn }] = useMutation(CLOCK_IN);
+  const [originalClockOut, { loading: clockingOut }] = useMutation(CLOCK_OUT);
 
   // Initialize offline state and sync manager
   useEffect(() => {
@@ -56,7 +58,6 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
       timestamp: new Date().toISOString(),
       location: { lat: variables.lat, lng: variables.lng },
       note: variables.note,
-      userId: user?.id,
       manualOverride: variables.manualOverride || false,
     };
 
@@ -76,7 +77,7 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
         setLocalOpenShift(shiftData);
         setOfflineShiftState(shiftData);
         
-        notify('success', 'Successfully clocked in');
+        console.log('Successfully clocked in');
         return result;
         
       } catch (error) {
@@ -96,7 +97,7 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
         setLocalOpenShift(localShift);
         setOfflineShiftState(localShift);
         
-        notify('success', 'Clocked in offline - will sync when online');
+        console.log('Clocked in offline - will sync when online');
         setPendingSyncCount(prev => prev + 1);
         return { data: { clockIn: localShift } };
       }
@@ -116,11 +117,11 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
       setLocalOpenShift(localShift);
       setOfflineShiftState(localShift);
       
-      notify('success', 'Clocked in offline - will sync when online');
+      console.log('Clocked in offline - will sync when online');
       setPendingSyncCount(prev => prev + 1);
       return { data: { clockIn: localShift } };
     }
-  }, [originalClockIn, user, notify]);
+  }, [originalClockIn]);
 
   // Enhanced clock out function
   const clockOut = useCallback(async ({ variables }) => {
@@ -129,7 +130,6 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
       timestamp: new Date().toISOString(),
       location: { lat: variables.lat, lng: variables.lng },
       note: variables.note,
-      userId: user?.id,
       manualOverride: variables.manualOverride || false,
     };
 
@@ -142,7 +142,7 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
         setLocalOpenShift(null);
         clearOfflineShiftState();
         
-        notify('success', 'Successfully clocked out');
+        console.log('Successfully clocked out');
         return result;
         
       } catch (error) {
@@ -154,7 +154,7 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
         setLocalOpenShift(null);
         clearOfflineShiftState();
         
-        notify('success', 'Clocked out offline - will sync when online');
+        console.log('Clocked out offline - will sync when online');
         setPendingSyncCount(prev => prev + 1);
         return { data: { clockOut: { success: true } } };
       }
@@ -166,11 +166,11 @@ export const useOfflineClockIn = (clockInMutation, clockOutMutation, user, notif
       setLocalOpenShift(null);
       clearOfflineShiftState();
       
-      notify('success', 'Clocked out offline - will sync when online');
+      console.log('Clocked out offline - will sync when online');
       setPendingSyncCount(prev => prev + 1);
       return { data: { clockOut: { success: true } } };
     }
-  }, [originalClockOut, user, notify]);
+  }, [originalClockOut]);
 
   return {
     clockIn,
